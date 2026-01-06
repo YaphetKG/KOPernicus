@@ -73,7 +73,7 @@ KOPernicus includes a modern React-based Chat UI for interactive exploration.
 This serves the agent via LangServe (FastAPI).
 ```bash
 uv run python -m kopernicus_agent.server
-# Server will start at http://localhost:8000
+# Server will start at http://localhost:8822
 ```
 
 **2. Start the Frontend UI:**
