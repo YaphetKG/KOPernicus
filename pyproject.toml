@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "biolink-mcp",
     "langchain>=1.2.0",
     "langchain-core>=1.2.6",
     "langchain-google-genai>=4.1.3",
@@ -12,5 +13,14 @@ dependencies = [
     "langchain-openai>=1.1.6",
     "langfuse>=3.11.2",
     "langgraph>=1.0.5",
+    "name-resolver-mcp",
+    "nodenormalizer-mcp",
     "pydantic>=2.12.5",
+    "robokop-mcp",
 ]
+
+[tool.uv.sources]
+biolink-mcp = { git = "https://github.com/cbizon/RoboMCP.git", subdirectory = "biolink-mcp" }
+name-resolver-mcp = { git = "https://github.com/cbizon/RoboMCP.git", subdirectory = "name-resolver-mcp" }
+nodenormalizer-mcp = { git = "https://github.com/cbizon/RoboMCP.git", subdirectory = "nodenormalizer-mcp" }
+robokop-mcp = { git = "https://github.com/cbizon/RoboMCP.git", subdirectory = "robokop-mcp" }
