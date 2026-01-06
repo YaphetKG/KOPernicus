@@ -5,7 +5,7 @@
 ** Same guy different Jacket ** 
 
 
-I was looking at the prompts of each node , in v3 and i said  "Hey, what's going on? 🎶". So what i noticed was rather simple , in the prompts every node was given "You are a <some role definition>> here's some data , do something". This format of the prompt gives isolation to each node, and doesn't have sense of common goal across the nodes. So maybe the harmony problem might be solved by making the nodes realize that they are part of a community. 
+I was looking at the prompts of each node , in v3 and i said  "Hey, what's going on? 🎶". So what i noticed was rather simple , in the prompts every node was given "You are a <some role definition> here's some data , do something". This format of the prompt gives isolation to each node, and doesn't have sense of common goal across the nodes. So maybe the harmony problem might be solved by making the nodes realize that they are part of a community. 
 
 
 ```I was reviewing the prompts and all of the prompts seems to give the LLMs characters such as answer prompt starts with "You are the answer writer" ... or for synthesis planner "You are the answer architect" ... just looking at all of this i think they miss out on what kind of community they belong in or the bigger contect why this task is assigned to them does that make sense? ``` 
@@ -22,7 +22,7 @@ Ok some notes here, my context managment is not the best ...
 
 ### KOPernicus Visualization (v3 Conceptual)
 
-![KOPernicus v3 Architecture](kopernicus_v3_architecture_nano_banana_1767677055077.png)
+<img src="kopernicus_v3_architecture_nano_banana_1767677055077.jpg" width="600" alt="KOPernicus v3">
 
 This diagram represents the **v3 (Decomposed)** architecture implemented in this current code base. It is designed for granular control, with separated concerns for analysis, decision making, and planning.
 
@@ -48,7 +48,7 @@ This is some nice progress, but co-odination is still a problem . There are some
 
 ### Visualization
 
-![KOPernicus v2 Analyst](kopernicus_v2_architecture_nano_banana_1767677072456.png)
+<img src="kopernicus_v2_architecture_nano_banana_1767677072456.png" width="600" alt="KOPernicus v2 Analyst">
 
 To solve the "mindless execution" problem of v1, we introduced the **Analyst** node. This shifted the paradigm from "doing" to "reasoning". This node will look at the current plan that was recommended by the replanner, it will consider the user query and also response of the executor to make a "Recommendation" on what to do next. The final strategy will still be made by the replanner. But the analyst step will provide a pause and think moment so the next steps in the plan are more thought out and less likely to go off rails. But then the issue here as big context, and the nodes were trying to do too much with a single prompt. So for v3 we separated the concerns into different nodes. It made a little bit more sense to me, but i still have a feeling that it can be done better.
 
@@ -61,7 +61,7 @@ The important behaviour change in this version is that the analyst will make sur
 
 ### Visualization
 
-![KOPernicus v1 ReAct](kopernicus_v1_architecture_nano_banana_1767677090495.png)
+<img src="kopernicus_v1_architecture_nano_banana_1767677090495.png" width="600" alt="KOPernicus v1 ReAct">
 
 
 
