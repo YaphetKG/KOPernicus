@@ -25,8 +25,7 @@ The following example demonstrates the agent interacting with the RoboKOP graph 
 ### Other interesting test queries (No promises that they will be answered , LLMs can be moody)
 
 1. Which genes associated with cyclic vomiting syndrome are modulated by chemical exposures, and what chemicals emerge as potential therapeutic hypotheses? 
- (CURRENTLY this drives the agent into a loop... , get egdes gives it a triple with NCBIGene:4567-->Unknown , and that drives it crazy but eventually ... here's the answer )
-Below is the Agents final answer (after *some* time): 
+ (CURRENTLY this drives the agent into a loop... , get egdes gives it a triple with NCBIGene:4567-->Unknown , and that drives it crazy but eventually ... here's the answer after *some* time): 
     ```
     Introduction Cyclic vomiting syndrome (MONDO:0010778) is a recurrent, episodic disorder characterized by severe nausea and vomiting. While its exact pathophysiology remains unclear, recent data suggest a genetic component.
     Genetic Landscape The only gene that the current knowledge graph links to cyclic vomiting syndrome is TRNL1 (NCBIGene:4567). This association is captured by the edge gene_associated_with_condition (NCBIGene:4567 → MONDO:0010778).
