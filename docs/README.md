@@ -1,6 +1,6 @@
 # KOPernicus Examples
 
-This document provides visual examples of KOPernicus in action.
+This document provides visual examples of KOPernicus in action. These are all on a gpt-oss/20b model. 
 
 ## Interactive Exploration
 
