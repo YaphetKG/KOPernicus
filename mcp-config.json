@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "biolink": {
+      "url": "http://localhost:8001/sse",
+      "transport": "sse"
+    },
+    "name-resolver": {
+      "url": "http://localhost:8002/sse",
+      "transport": "sse"
+    },
+    "nodenormalizer": {
+      "url": "http://localhost:8003/sse",
+      "transport": "sse"
+    },
+    "robokop": {
+      "url": "http://localhost:8004/sse",
+      "transport": "sse"
+    }
+  }
+}
