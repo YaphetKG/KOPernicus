@@ -1,65 +1,12 @@
 # KOPernicus Architecture Diagram
 
 ## v3: The KOPernicus System (Decomposed)
-**"The Specialist Team"**
+
+### KOPernicus Visualization (v3 Conceptual)
+
+![KOPernicus v3 Architecture](kopernicus_v3_architecture_nano_banana_1767677055077.png)
 
 This diagram represents the **v3 (Decomposed)** architecture implemented in this current code base. It is designed for granular control, with separated concerns for analysis, decision making, and planning.
-
-### Mermaid Diagram
-
-```mermaid
-graph TD
-    %% Subgraphs for Phases
-    subgraph "Phase 1: Execution"
-        Planner[Planner Node]
-        Executor[Executor Node]
-        Tools[MCP Tools]
-    end
-
-    subgraph "Phase 2: Analysis (Parallel)"
-        Schema[Schema Analyzer]
-        Coverage[Coverage Analyzer]
-        Loop[Loop Detector]
-        Decision[Decision Maker]
-    end
-
-    subgraph "Phase 3: Planning (Branching)"
-        Exploration[Exploration Planner]
-        Synthesis[Synthesis Planner]
-    end
-
-    subgraph "Phase 4: Answer"
-        AnswerGen[Answer Generator]
-        End((End))
-    end
-
-    %% Definition of Flow
-    Planner -->|Initial Strategy| Executor
-    Executor <-->|Strict Tool Calls| Tools
-    
-    %% Parallel Analysis
-    Executor -->|Evidence| Schema
-    Executor -->|Evidence| Coverage
-    Executor -->|Evidence| Loop
-    
-    %% Aggregation
-    Schema -->|Patterns| Decision
-    Coverage -->|Density Score| Decision
-    Loop -->|Stuck Status| Decision
-    
-    %% Branching
-    Decision -->|Explore More| Exploration
-    Decision -->|Ready to Answer| Synthesis
-    
-    %% Loops & Finalization
-    Exploration -->|Next Step| Executor
-    Synthesis -->|Answer Plan| AnswerGen
-    AnswerGen -->|Final Response| End
-
-    %% Styling
-    style Decision fill:#f96,stroke:#333,stroke-width:2px
-    style Executor fill:#bfb,stroke:#333,stroke-width:2px
-```
 
 ### Description
 - **Phase 1: Execution**: 
@@ -74,57 +21,31 @@ graph TD
 - **Phase 4: Answer**:
   - **Answer Generator**: Writes the final response with strict citation rules, separate from logic.
 
-### KOPernicus Visualization (v3 Conceptual)
-
-![KOPernicus v3 Architecture Nano Banana Style](kopernicus_v3_architecture_nano_banana_1767677055077.png)
+This one is a bit more complex than v2, but i think it makes more sense. The nodes are seperated to do specific things. And we do a lot of state (Memory) sharing between each node. This can be a little hard to co-ordinate. And nodes need to be in harmony to the common goal. There is some refinement to be done. I would say for one hop queries it does more than just guess and answer as seen in the [examples](README.md#examples).
+This is some nice progress, but co-odination is still a problem . There are some underlying issues with how to better shift strategy when looping becomes intense (some loops are easier to detect than others, i have seen loops of 4 or 5 steps, rather than a single step back and forth). So The might be a need for a step to re-align "every-one" , "every expert" in one common goal , every now and then. 
 
 ---
 
 ## v2: The Thinker (Plan-Reason-Act)
-**"The Analyst"**
-
-To solve the "mindless execution" problem of v1, we introduced the **Analyst** node. This shifted the paradigm from "doing" to "reasoning".
-
-### Mermaid Diagram
-
-```mermaid
-graph TD
-    subgraph "KOPernicus Agent v2"
-        Planner2[Planner]
-        Executor2[Executor]
-        Analyst2[Analyst]
-        Replanner2[Replanner]
-        
-        Planner2 --> Executor2
-        Executor2 --> Analyst2
-        Analyst2 --> Replanner2
-        Replanner2 --> Executor2
-    end
-```
 
 ### Visualization
 
 ![KOPernicus v2 Analyst](kopernicus_v2_architecture_nano_banana_1767677072456.png)
 
+To solve the "mindless execution" problem of v1, we introduced the **Analyst** node. This shifted the paradigm from "doing" to "reasoning". This node will look at the current plan that was recommended by the replanner, it will consider the user query and also response of the executor to make a "Recommendation" on what to do next. The final strategy will still be made by the replanner. But the analyst step will provide a pause and think moment so the next steps in the plan are more thought out and less likely to go off rails. But then the issue here as big context, and the nodes were trying to do too much with a single prompt. So for v3 we separated the concerns into different nodes. It made a little bit more sense to me, but i still have a feeling that it can be done better.
+
+The important behaviour change in this version is that the analyst will make sure the planner remembers and considers results of previous steps. This memory of what's been done is crutial in keeping the big picture in mind and still thinking about the immidate next steps.
+
+
 ---
 
 ## v1: The Foundation (Standard ReAct)
-**"The Doer"**
-
-The initial version was a standard implementation of the Plan-and-Execute pattern using a ReAct agent.
-
-### Mermaid Diagram
-
-```mermaid
-graph LR
-    Planner -->|List of Steps| Executor
-    Executor -->|Tool Result| Replanner
-    Replanner -->|Updated Plan| Executor
-    Executor -->|Uses| Tools[MCP Tools]
-    
-    style Executor fill:#eee,stroke:#333
-```
 
 ### Visualization
 
 ![KOPernicus v1 ReAct](kopernicus_v1_architecture_nano_banana_1767677090495.png)
+
+
+
+The initial version was a standard implementation of the Plan-and-Execute pattern using a ReAct agent.
+This is a good starting point, but it has limitations in terms of reasoning and decision making. The main thing that i noticed with this was that it was going off rails often. By this i mean , it would slowly drift away from the user query and start doing things that were not relevant to the task. So we introduced the Analyst node to help it reason about the task and make decisions [v2](#v2-the-thinker-plan-reason-act). 
