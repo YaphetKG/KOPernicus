@@ -18,12 +18,22 @@ def start_servers():
     print("🚀 Starting ROBOKOP-MCP Servers...")
     
     for server in SERVERS:
-        cmd = [
-            "uv", "run", "-m", server["module"],
-            "run", "--transport", "sse", "--port", str(server["port"])
-        ]
+        # Special handling for biolink_mcp which is missing if __name__ == "__main__": override
+        if server["name"] == "biolink":
+             cmd = [
+                "uv", "run", "python", "-c", 
+                f"from {server['module']} import main; main()",
+                "run", "--transport", "sse", "--port", str(server["port"])
+            ]
+        else:
+            # Standard execution for well-behaved modules
+            cmd = [
+                "uv", "run", "-m", server["module"],
+                "run", "--transport", "sse", "--port", str(server["port"])
+            ]
         
         print(f"   • Starting {server['name']} on port {server['port']}...")
+        print(f"{' '.join(cmd)}")
         try:
             # shell=True required on Windows for some path resolutions, but standard Popen usually safer
             # using clean env inheritance

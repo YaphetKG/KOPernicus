@@ -1,20 +1,45 @@
 {
   "mcpServers": {
     "biolink": {
-      "url": "http://localhost:8001/sse",
-      "transport": "sse"
+      "transport": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-c",
+        "from biolink_mcp.server import main; main()",
+        "run"
+      ]
     },
     "name-resolver": {
-      "url": "http://localhost:8002/sse",
-      "transport": "sse"
+      "transport": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "-m",
+        "name_resolver_mcp.server",
+        "run"
+      ]
     },
     "nodenormalizer": {
-      "url": "http://localhost:8003/sse",
-      "transport": "sse"
+      "transport": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "-m",
+        "nodenormalizer_mcp.server",
+        "run"
+      ]
     },
     "robokop": {
-      "url": "http://localhost:8004/sse",
-      "transport": "sse"
+      "transport": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "-m",
+        "robokop_mcp.server",
+        "run"
+      ]
     }
   }
 }

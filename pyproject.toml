@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "biolink-mcp",
+    "fastapi>=0.128.0",
     "langchain>=1.2.0",
     "langchain-core>=1.2.6",
     "langchain-google-genai>=4.1.3",
@@ -13,10 +14,13 @@ dependencies = [
     "langchain-openai>=1.1.6",
     "langfuse>=3.11.2",
     "langgraph>=1.0.5",
+    "langserve>=0.3.3",
     "name-resolver-mcp",
     "nodenormalizer-mcp",
     "pydantic>=2.12.5",
     "robokop-mcp",
+    "sse-starlette>=3.1.2",
+    "uvicorn>=0.40.0",
 ]
 
 [tool.uv.sources]

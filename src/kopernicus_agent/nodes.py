@@ -38,16 +38,23 @@ async def planner_node(state: AgentState, llm):
     prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT + "\n{format_instructions}")
     planner = prompt | llm | parser
     
-    result = await planner.ainvoke({
-        "input": state["input"],
-        "format_instructions": parser.get_format_instructions()
-    })
-    
-    logger.info(f"Initial plan: {result.strategy}")
-    return {
-        "plan": result.steps,
-        "exploration_strategy": result.strategy
-    }
+    try:
+        result = await planner.ainvoke({
+            "input": state["input"],
+            "format_instructions": parser.get_format_instructions()
+        })
+        
+        logger.info(f"Initial plan: {result.strategy}")
+        return {
+            "plan": result.steps,
+            "exploration_strategy": result.strategy
+        }
+    except Exception as e:
+        logger.error(f"Planning failed (likely JSON error): {e}")
+        return {
+            "plan": [],
+            "exploration_strategy": f"I encountered an error while planning: {e}. Please try checking your input or rephrasing your request."
+        }
 
 async def executor_node(state: AgentState, llm, tools):
     """Execute single step from plan"""
@@ -222,7 +229,8 @@ async def decision_maker_node(state: AgentState, llm):
         return {
             "should_explore_more": result.should_explore_more,
             "should_transition_to_synthesis": result.should_transition_to_synthesis,
-            "ready_to_answer": not result.should_explore_more
+            "ready_to_answer": not result.should_explore_more,
+            "decision_reasoning": result.reasoning
         }
     except Exception as e:
         logger.error(f"Decision making failed: {e}")
@@ -231,7 +239,8 @@ async def decision_maker_node(state: AgentState, llm):
         return {
             "should_explore_more": not at_limit,
             "should_transition_to_synthesis": at_limit,
-            "ready_to_answer": at_limit
+            "ready_to_answer": at_limit,
+            "decision_reasoning": f"Error in decision making: {e}. Defaulting to {'stop' if at_limit else 'continue'}."
         }
 
 async def exploration_planner_node(state: AgentState, llm):
@@ -255,7 +264,10 @@ async def exploration_planner_node(state: AgentState, llm):
         })
         
         logger.info(f"Next exploration: {result.action}")
-        return {"plan": [result.action]}
+        return {
+            "plan": [result.action],
+            "planning_rationale": result.rationale
+        }
     except Exception as e:
         logger.error(f"Exploration planning failed: {e}")
         return {"plan": ["Get edge summary for main entity"]}
@@ -305,6 +317,58 @@ async def answer_generator_node(state: AgentState, llm):
         f"Evidence {i+1}:\n{json.dumps(e, indent=2)}"
         for i, e in enumerate(successful_evidence)
     ])
+
+    # Extract subgraph from evidence
+    nodes = {}
+    edges = []
+    
+    for item in successful_evidence:
+        tool = item.get("tool")
+        data = item.get("data")
+        
+        if not data:
+            continue
+            
+        try:
+            # Handle edge lists
+            if tool in ["get_edges", "get_edges_between"] and isinstance(data, list):
+                for edge in data:
+                    # Capture nodes
+                    if "subject" in edge:
+                        s = edge["subject"]
+                        if isinstance(s, dict) and "id" in s:
+                            nodes[s["id"]] = {"id": s["id"], "name": s.get("name", s["id"]), "type": s.get("category", ["Entity"])[0]}
+                    
+                    if "object" in edge:
+                        o = edge["object"]
+                        if isinstance(o, dict) and "id" in o:
+                            nodes[o["id"]] = {"id": o["id"], "name": o.get("name", o["id"]), "type": o.get("category", ["Entity"])[0]}
+                            
+                    # Capture edge
+                    if "predicate" in edge and "subject" in edge and "object" in edge:
+                        edges.append({
+                            "source": edge["subject"]["id"],
+                            "target": edge["object"]["id"],
+                            "label": edge["predicate"],
+                            "id": edge.get("id", f"{edge['subject']['id']}-{edge['predicate']}-{edge['object']['id']}")
+                        })
+                        
+            # Handle single node lookup
+            elif tool == "get_node" and isinstance(data, dict):
+                if "id" in data:
+                    nodes[data["id"]] = {
+                        "id": data["id"], 
+                        "name": data.get("name", data["id"]), 
+                        "type": data.get("category", ["Entity"])[0]
+                    }
+
+        except Exception as ex:
+            logger.warning(f"Error extracting subgraph from {tool}: {ex}")
+
+    critical_subgraph = {
+        "nodes": list(nodes.values()),
+        "edges": edges
+    }
     
     synthesis_plan = state.get("plan", ["Answer the question"])[0]
     
@@ -325,11 +389,16 @@ async def answer_generator_node(state: AgentState, llm):
         if result.limitations != "None":
             response += f"**Limitations**: {result.limitations}"
         
-        return {"response": response, "plan": []}
+        return {
+            "response": response, 
+            "plan": [],
+            "critical_subgraph": critical_subgraph
+        }
     except Exception as e:
         logger.error(f"Answer generation failed: {e}")
         # Fallback: simple summary
         return {
             "response": f"Based on collected evidence: {str(successful_evidence[:2])[:500]}...",
-            "plan": []
+            "plan": [],
+            "critical_subgraph": {"nodes": [], "edges": []}
         }

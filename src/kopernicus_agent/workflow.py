@@ -1,5 +1,6 @@
 from langgraph.graph import StateGraph, END
-from .state import AgentState
+from langgraph.graph import StateGraph, END
+from .state import AgentState, InputState
 from .nodes import (
     planner_node, executor_node, schema_analyzer_node, 
     coverage_analyzer_node, loop_detector_node, decision_maker_node, 
@@ -23,7 +24,7 @@ def create_agent_graph(llm, tools):
     async def answer_generator(state): return await answer_generator_node(state, llm)
     
     # Build graph with clear flow
-    workflow = StateGraph(AgentState)
+    workflow = StateGraph(AgentState, input=InputState, output=AgentState)
     
     # Add all nodes
     workflow.add_node("planner", planner)

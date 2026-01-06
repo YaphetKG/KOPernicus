@@ -1,31 +1,38 @@
 import operator
 from typing import Annotated, List, Tuple, Dict, Literal
 from pydantic import BaseModel, Field
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, NotRequired
+
+class InputState(TypedDict):
+    input: str
 
 class AgentState(TypedDict):
     input: str
-    plan: List[str]
-    past_steps: Annotated[List[Tuple], operator.add]
-    evidence: Annotated[List[Dict], operator.add]
+    plan: NotRequired[List[str]]
+    past_steps: NotRequired[Annotated[List[Tuple], operator.add]]
+    evidence: NotRequired[Annotated[List[Dict], operator.add]]
     
     # NEW: Separate tracking for different analysis tasks
-    schema_patterns: Annotated[List[str], operator.add]  # What patterns exist?
-    coverage_assessment: str  # How well have we explored?
-    loop_detection: str  # Are we repeating ourselves?
+    schema_patterns: NotRequired[Annotated[List[str], operator.add]]  # What patterns exist?
+    coverage_assessment: NotRequired[str]  # How well have we explored?
+    loop_detection: NotRequired[str]  # Are we repeating ourselves?
     
     # Decision signals
-    should_explore_more: bool
-    should_transition_to_synthesis: bool
-    ready_to_answer: bool
+    should_explore_more: NotRequired[bool]
+    should_transition_to_synthesis: NotRequired[bool]
+    ready_to_answer: NotRequired[bool]
+    
+    # Reasons/Rationales
+    decision_reasoning: NotRequired[str]
+    planning_rationale: NotRequired[str]
     
     # Planning
-    exploration_strategy: str  # Current exploration approach
+    exploration_strategy: NotRequired[str]  # Current exploration approach
     
     # Final output
-    response: str
-    iteration_count: int
-    max_iterations: int
+    response: NotRequired[str]
+    iteration_count: NotRequired[int]
+    max_iterations: NotRequired[int]
 
 class Plan(BaseModel):
     """Initial exploration plan"""
@@ -102,6 +109,10 @@ class AnswerOutput(BaseModel):
     limitations: str = Field(
         description="What's missing or uncertain",
         default="None"
+    )
+    critical_subgraph: Dict = Field(
+        description="The subgraph of evidence used for the answer, containing nodes and edges",
+        default_factory=dict
     )
 
 class QueryValidation(BaseModel):

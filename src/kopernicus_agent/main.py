@@ -3,6 +3,7 @@ import json
 import logging
 import traceback
 import sys
+import os
 from pathlib import Path
 from langfuse.langchain import CallbackHandler
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -26,8 +27,12 @@ def get_mcp_client():
         config_path = Path(__file__).parent / 'mcp-config.json'
     
     if not config_path.exists():
-        # Fallback to src root if running from there
+        # Fallback to src if running from there
         config_path = Path(__file__).parent.parent / 'mcp-config.json'
+
+    if not config_path.exists():
+        # Fallback to project root (src/../)
+        config_path = Path(__file__).parent.parent.parent / 'mcp-config.json'
 
     if not config_path.exists():
         raise FileNotFoundError("Could not find mcp-config.json")
@@ -46,7 +51,7 @@ async def main(query: str = None):
         logger.error(f"MCP connection failed: {e}")
         return
 
-    llm = LLMFactory.get_llm(provider="openai")
+    llm = LLMFactory.get_llm(provider=os.getenv("LLM_PROVIDER", "openai"))
     app = create_agent_graph(llm, tools)
     
     kopernicus_intro()
