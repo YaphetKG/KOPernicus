@@ -37,6 +37,7 @@ The following example demonstrates the agent interacting with the RoboKOP graph 
     ```
 
 2. What is the mechanism of Metformin for Diabetes?
+(after 23mins 23m 51s 236,221/66,234 I/O tokens,  302,455 total tokens)
     ```
     Metformin works in diabetes by activating the cellular energy sensor AMP‑activated protein kinase (AMPK).  In the knowledge graph, Metformin (CHEBI:6801) has a biolink:affects_response_to relationship to the catalytic subunits of AMPK (PRKAA1 and PRKAA2).  The AMPK subunit PRKAA1, in turn, has biolink:affects edges to several biological processes, including the glucose metabolic process (GO:0005975) and the regulation of hepatic gluconeogenesis.  Activation of AMPK leads to phosphorylation of key enzymes that suppress gluconeogenesis in the liver, increase insulin sensitivity in peripheral tissues, and promote glucose uptake by muscle cells.  These downstream effects reduce fasting blood glucose levels and improve glycaemic control, which is why Metformin is a first‑line therapy for type 2 diabetes.  The graph also records a therapeutic relationship between Metformin and diabetes mellitus (MONDO:0005015), confirming its clinical use.  Thus, the mechanism of Metformin in diabetes is: Metformin → activation of AMPK (PRKAA1/PRKAA2) → inhibition of hepatic gluconeogenesis and enhancement of insulin sensitivity and glucose uptake, leading to lower blood glucose levels.
     ```
