@@ -65,6 +65,26 @@ uv run -m src.kopernicus_agent.main
 uv run -m src.kopernicus_agent.main "What treats Diabetes?"
 ```
 
+### Running with Web UI (React + LangServe)
+
+KOPernicus includes a modern React-based Chat UI for interactive exploration.
+
+**1. Start the Backend Server:**
+This serves the agent via LangServe (FastAPI).
+```bash
+uv run python -m kopernicus_agent.server
+# Server will start at http://localhost:8000
+```
+
+**2. Start the Frontend UI:**
+Open a new terminal and run:
+```bash
+cd ui
+npm install
+npm run dev
+```
+The UI will be available at http://localhost:5173.
+
 ## 📚 Examples
 
 See [docs/README.md](docs/README.md) for usage examples and visual demonstrations.
