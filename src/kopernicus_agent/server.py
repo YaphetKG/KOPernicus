@@ -4,6 +4,7 @@ from langserve import add_routes
 from .llm import LLMFactory
 from .workflow import create_agent_graph
 from .main import get_mcp_client
+from .utils import setup_langfuse_tracing
 import uvicorn
 import asyncio
 import os
@@ -22,7 +23,15 @@ async def setup_agent():
         tools = await mcp_client.get_tools()
         llm = LLMFactory.get_llm(provider=os.getenv("LLM_PROVIDER", "openai"))
         agent = create_agent_graph(llm, tools)
-        return agent.with_config({"recursion_limit": 100})
+        
+        # Add tracing
+        langfuse_handler = setup_langfuse_tracing()
+        
+        config = {"recursion_limit": 100}
+        if langfuse_handler:
+            config["callbacks"] = [langfuse_handler]
+            
+        return agent.with_config(config)
     except Exception as e:
         raise e
         return None

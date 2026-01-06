@@ -1,4 +1,22 @@
-# KOPernicus Architecture Diagram
+# KOPernicus Architecture / Evolution
+
+## v4: The KOPernicus Community 
+
+** Same guy different Jacket ** 
+
+
+I was looking at the prompts of each node , in v3 and i said  "Hey, what's going on? 🎶". So what i noticed was rather simple , in the prompts every node was given "You are a <some role definition>> here's some data , do something". This format of the prompt gives isolation to each node, and doesn't have sense of common goal across the nodes. So maybe the harmony problem might be solved by making the nodes realize that they are part of a community. 
+
+
+```I was reviewing the prompts and all of the prompts seems to give the LLMs characters such as answer prompt starts with "You are the answer writer" ... or for synthesis planner "You are the answer architect" ... just looking at all of this i think they miss out on what kind of community they belong in or the bigger contect why this task is assigned to them does that make sense? ``` 
+Posed that question to both gemini and chat-gpt, chatgpt came up with a reasearch community analogy and gemini pointed out somthing similar to that. So yeah , v4 is a step in that direction. 
+
+Ok some notes here, my context managment is not the best ... 
+- Resolves curie ... forgets about it and trys to reslove again .... 
+- Loops over and over again with the same loop patterns. 
+- Descision node is a bit stringent , even after adding some instructions around considering biological effects and giving it a bit more hints around rewarding novelity it seems to be a bit too strict. For eg it would more than often go from disease -> gene-> chemical .... even if there were gene -> gene that could potentially have biological relevance.
+- This behaviour in the Descision node influnces the exploration node (which comes up with the next set of tasks for the executor)... to go and do the same thing over and over again. 
+- I think we need a new node that will summarize critical steps .... and then let that be the overall history of what has occurred. I have to remind myself that every node call is stateless , execept for the context its given. This is why context engineering is so important... 
 
 ## v3: The KOPernicus System (Decomposed)
 

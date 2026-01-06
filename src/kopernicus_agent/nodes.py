@@ -185,6 +185,7 @@ async def loop_detector_node(state: AgentState, llm):
     try:
         result = await detector.ainvoke({
             "recent_steps": str(recent_steps),
+            "schema_patterns": "\n".join(get_unique_schema(state.get("schema_patterns", []))),
             "format_instructions": parser.get_format_instructions()
         })
         
@@ -217,6 +218,7 @@ async def decision_maker_node(state: AgentState, llm):
         result = await decider.ainvoke({
             "coverage_score": coverage_data.get("density_score", 5),
             "loop_status": "LOOPING" if loop_data.get("is_looping") else "OK",
+            "loop_recommendation": loop_data.get("recommendation", "None"),
             "iteration": state.get("iteration_count", 0),
             "max_iterations": state.get("max_iterations", 15),
             "input": state["input"],

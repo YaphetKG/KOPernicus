@@ -5,13 +5,14 @@ import traceback
 import sys
 import os
 from pathlib import Path
-from langfuse.langchain import CallbackHandler
+from pathlib import Path
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from .llm import LLMFactory
 from .workflow import create_agent_graph
 from .nodes import validate_query
 from .intro import kopernicus_intro
+from .utils import setup_langfuse_tracing
 
 # --- Setup Logging ---
 logging.basicConfig(
@@ -97,9 +98,10 @@ async def main(query: str = None):
                 "max_iterations": 15
             }
             
-            langfuse_handler = CallbackHandler()
+            langfuse_handler = setup_langfuse_tracing()
+            callbacks = [langfuse_handler] if langfuse_handler else []
             
-            async for event in app.astream(initial_state, config={"recursion_limit": 100, "callbacks": [langfuse_handler]}):
+            async for event in app.astream(initial_state, config={"recursion_limit": 100, "callbacks": callbacks}):
                 for k, v in event.items():
                     if k == "planner":
                         print(f"📋 Strategy: {v.get('exploration_strategy')}")

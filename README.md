@@ -80,3 +80,19 @@ KOPernicus uses a decomposed architecture where specialized semantic nodes handl
 - **Decision Maker**: Routes execution based on analysis.
 
 See [docs/architecture.md](docs/architecture.md) for diagrams.
+
+## Observability
+
+The agent supports tracing via [Langfuse](https://langfuse.com/). To enable it:
+
+1. Create a `langfuse_config.json` file in the project root:
+   ```json
+   {
+     "LANGFUSE_PUBLIC_KEY": "pk-lf-...",
+     "LANGFUSE_SECRET_KEY": "sk-lf-...",
+     "LANGFUSE_HOST": "https://langfuse.apps.renci.org"
+   }
+   ```
+2. Alternatively, set these as environment variables.
+3. If no credentials are found, tracing is automatically disabled.
+
