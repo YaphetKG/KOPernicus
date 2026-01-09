@@ -1,0 +1,3 @@
+- [ ] Edge Summary Tool call refine ; schema analysis should be able to focus on patterns that makes sense biologically
+- [ ] Maybe using publications as a tunnel to other parts of the graph, these should be avalable from the edge call. and if we get stuck maybe looking at the pubmed abstract can reveal ways to progress.
+- [ ] Looping remains a challenge, so trying to understand what's going on , and maybe some focused testing on the loop detector convergence , and general strategy shift on the planner node would be helpful. 
