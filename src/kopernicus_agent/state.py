@@ -33,6 +33,20 @@ class AgentState(TypedDict):
     response: NotRequired[str]
     iteration_count: NotRequired[int]
     max_iterations: NotRequired[int]
+    
+    # v5 Epistemic Control
+    answer_contract: NotRequired[Dict]
+    interpreted_evidence: NotRequired[Annotated[List[Dict], operator.add]]
+    negative_knowledge: NotRequired[Annotated[List[Dict], operator.add]]
+    hard_constraints: NotRequired[Dict]
+    
+    # v4 Shared Artifact (Normalized)
+    community_log: NotRequired[Dict] 
+
+    # Interactive Planning
+    plan_proposal: NotRequired[str]
+    is_plan_approved: NotRequired[bool]
+    planning_feedback: NotRequired[str]
 
 class Plan(BaseModel):
     """Initial exploration plan"""
@@ -45,13 +59,9 @@ class ExplorationStep(BaseModel):
     rationale: str = Field(description="Why this step (1 sentence)")
 
 class SchemaAnalysis(BaseModel):
-    """Pure schema extraction - NO decision making"""
+    """Extraction of relationship patterns"""
     patterns: List[str] = Field(
-        description="Concrete patterns found (e.g., 'ChemicalEntity -[biolink:treats]-> Disease')"
-    )
-    new_predicates_discovered: List[str] = Field(
-        description="New predicate types discovered in latest evidence",
-        default_factory=list
+        description="Patterns found (e.g., 'Type -[pred]-> Type')"
     )
 
 class CoverageAnalysis(BaseModel):
@@ -78,16 +88,12 @@ class LoopDetector(BaseModel):
     )
 
 class DecisionMaker(BaseModel):
-    """PURE decision logic based on analyses"""
-    should_explore_more: bool = Field(
-        description="True if we need more data coverage"
-    )
-    should_transition_to_synthesis: bool = Field(
-        description="True if we have enough to answer"
-    )
-    reasoning: str = Field(
-        description="1-2 sentence explanation of decision"
-    )
+    """Decision logic for graph navigation"""
+    epistemic_state: Literal["insufficient", "mechanistic", "direct"]
+    publication_tier: Literal["Gold", "Silver", "Bronze"]
+    control_decision: Literal["explore", "synthesize", "stop"]
+    reasoning: str
+    missing_explanatory_fact: str = Field(default="None")
 
 class SynthesisPlan(BaseModel):
     """How to formulate the answer"""
@@ -118,3 +124,76 @@ class AnswerOutput(BaseModel):
 class QueryValidation(BaseModel):
     is_valid: bool
     feedback: str
+
+class BiologicalHypothesis(BaseModel):
+    id: str # e.g., "H1"
+    statement: str # "We suspect Metformin modulates AMPK pathway"
+    status: Literal["Provisional", "Validated", "Refuted"]
+    support: str # Brief citation of evidence step
+
+class HardConstraints(BaseModel):
+    """Enforceable constraints for the planner"""
+    forbidden_entities: List[str] = Field(default_factory=list)
+    forbidden_predicates: List[str] = Field(default_factory=list)
+    locked_anchor_entities: List[str] = Field(default_factory=list)
+
+class CommunityLog(BaseModel):
+    # Resolved Anchors: Immutable once set
+    resolved_entities: Dict[str, str] = Field(default_factory=dict, description="Name -> CURIE map. e.g. {'Diabetes': 'MONDO:123'}")
+    
+    # Exploration Trajectory
+    trajectory: List[str] = Field(default_factory=list, description="High-level summary of directions tried")
+    deprioritized_paths: List[str] = Field(default_factory=list, description="Directions we explicitly gave up on")
+    
+    # Hypotheses
+    hypotheses: List[BiologicalHypothesis] = Field(default_factory=list)
+    
+    # State of Belief
+    open_questions: List[str] = Field(default_factory=list)
+    novelty_budget: int = Field(default=5, description="1-10 scale. 1=Conservative/Verification, 10=Wild Speculation")
+    
+    # Narrative Reframing
+    global_goal_reframed: str = Field(default="", description="The current evolving story/goal")
+
+class AlignmentOutput(BaseModel):
+    """Output from Alignment Node (Steward) to update the log"""
+    updated_log: CommunityLog
+    hard_constraints: HardConstraints = Field(default_factory=HardConstraints)
+    updates_made: str = Field(description="Description of what changed in the log")
+
+class AnswerContract(BaseModel):
+    """The 'Definition of Done' for the current query"""
+    query_type: Literal["treatment", "mechanism", "association", "hypothesis"]
+    required_entity_types: List[str]
+    required_predicates: List[str]
+    min_path_length: int = 1
+    max_path_length: int = 3
+    requires_direct_evidence: bool = False
+
+class InterpretedEvidence(BaseModel):
+    """Evidence with scientific weight and interpretation"""
+    subject_curie: str
+    predicate: str
+    object_curie: str
+    evidence_type: Literal["direct", "mechanistic", "associative"]
+    strength_score: int = Field(ge=1, le=5)
+    source_step: str
+    rationale: str
+
+class NegativeKnowledge(BaseModel):
+    """Knowledge of what DOES NOT work or exist"""
+    entity: str
+    predicate: str
+    failure_reason: str
+    iteration: int
+
+
+class QueryClassification(BaseModel):
+    """Output of the query classifier"""
+    contract: AnswerContract
+    reasoning: str
+
+class PlanningPhase(BaseModel):
+    """Decision from the gatekeeper"""
+    decision: Literal["approved", "feedback"]
+    reasoning: str

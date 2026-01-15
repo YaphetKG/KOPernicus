@@ -2,10 +2,11 @@ import axios from "axios";
 
 const API_URL = "http://localhost:8822/kopernicus";
 
-export const invokeAgent = async (input: string) => {
+export const invokeAgent = async (input: string, threadId: string = "default-session") => {
   try {
     const response = await axios.post(`${API_URL}/invoke`, {
       input: { input },
+      config: { configurable: { thread_id: threadId } }
     });
     return response.data;
   } catch (error) {
@@ -14,13 +15,16 @@ export const invokeAgent = async (input: string) => {
   }
 };
 
-export const streamAgent = async (input: string, onChunk: (chunk: any) => void) => {
+export const streamAgent = async (input: string, threadId: string, onChunk: (chunk: any) => void) => {
   const response = await fetch(`${API_URL}/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ input: { input } }),
+    body: JSON.stringify({
+      input: { input },
+      config: { configurable: { thread_id: threadId } }
+    }),
   });
 
   if (!response.body) return;

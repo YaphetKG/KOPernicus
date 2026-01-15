@@ -27,9 +27,21 @@ async def setup_agent():
         # Add tracing
         langfuse_handler = setup_langfuse_tracing()
         
-        config = {"recursion_limit": 100}
+        config = {
+            "recursion_limit": 1000,
+            "configurable": {"thread_id": "default-session"}
+        }
         if langfuse_handler:
             config["callbacks"] = [langfuse_handler]
+        
+        # Use get_graph() to access visualization methods
+        try:
+            agent.get_graph().content
+            print("\n--- Agent Architecture ---")
+            agent.get_graph().print_ascii()
+            print("--------------------------\n")
+        except:
+            pass
             
         return agent.with_config(config)
     except Exception as e:

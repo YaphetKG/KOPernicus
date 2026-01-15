@@ -19,6 +19,7 @@ interface Message {
     subgraph?: any;
     steps?: AgentStep[];
     isStreaming?: boolean;
+    isPlanProposal?: boolean;
 }
 
 const AgentProgress: React.FC<{ steps: AgentStep[], isStreaming?: boolean }> = ({ steps, isStreaming }) => {
@@ -104,6 +105,8 @@ export const ChatInterface: React.FC = () => {
     const [input, setInput] = useState('');
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [threadId] = useState(() => `web-${Math.random().toString(36).substring(7)}`);
+    const [isPlanPending, setIsPlanPending] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = () => {
@@ -119,7 +122,7 @@ export const ChatInterface: React.FC = () => {
 
             const existingSteps = newMsgs[msgIndex].steps || [];
             // Mark previous active steps as completed
-            const updatedSteps = existingSteps.map(s =>
+            const updatedSteps = existingSteps.map((s: AgentStep) =>
                 s.status === 'active' ? { ...s, status: 'completed' as const } : s
             );
 
@@ -131,17 +134,16 @@ export const ChatInterface: React.FC = () => {
         });
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!input.trim() || isLoading) return;
+    const sendMessage = async (text: string) => {
+        if (!text.trim() || isLoading) return;
 
-        const userMsg = input;
-        setInput('');
+        const userMsg = text;
+        if (text === input) setInput('');
 
         // Add user message
         setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
 
-        // Add placeholder assistant message
+        // Add assistant message
         setIsLoading(true);
         setMessages(prev => [...prev, {
             role: 'assistant',
@@ -150,11 +152,29 @@ export const ChatInterface: React.FC = () => {
             isStreaming: true
         }]);
 
-        const msgIndex = messages.length + 1; // Index of the new assistant message
+        const msgIndex = messages.length + 1;
 
         try {
-            await streamAgent(userMsg, (chunk) => {
+            await streamAgent(userMsg, threadId, (chunk) => {
                 const timestamp = Date.now();
+
+                // --- Plan Proposer ---
+                if (chunk.plan_proposer) {
+                    const plan = chunk.plan_proposer.plan_proposal;
+                    setIsPlanPending(true);
+                    setMessages(prev => {
+                        const newMsgs = [...prev];
+                        if (newMsgs[msgIndex]) {
+                            newMsgs[msgIndex] = {
+                                ...newMsgs[msgIndex],
+                                content: plan,
+                                isStreaming: false,
+                                isPlanProposal: true
+                            };
+                        }
+                        return newMsgs;
+                    });
+                }
 
                 // --- Planner ---
                 if (chunk.planner) {
@@ -266,6 +286,7 @@ export const ChatInterface: React.FC = () => {
                 // --- Final Answer ---
                 if (chunk.answer_generator) {
                     const output = chunk.answer_generator;
+                    setIsPlanPending(false); // Research finished
                     setMessages(prev => {
                         const newMsgs = [...prev];
                         if (newMsgs[msgIndex]) {
@@ -274,7 +295,8 @@ export const ChatInterface: React.FC = () => {
                                 content: output.response,
                                 subgraph: output.critical_subgraph,
                                 isStreaming: false,
-                                steps: (newMsgs[msgIndex].steps || []).map(s => ({ ...s, status: 'completed' }))
+                                isPlanProposal: false,
+                                steps: (newMsgs[msgIndex].steps || []).map((s: AgentStep) => ({ ...s, status: 'completed' }))
                             };
                         }
                         return newMsgs;
@@ -304,6 +326,11 @@ export const ChatInterface: React.FC = () => {
                 return newMsgs;
             });
         }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        sendMessage(input);
     };
 
     return (
@@ -350,6 +377,23 @@ export const ChatInterface: React.FC = () => {
                                 </div>
                             )}
 
+                            {msg.isPlanProposal && !msg.isStreaming && (
+                                <div className="mt-4 flex flex-col gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                                    <p className="text-xs text-blue-300 font-medium uppercase tracking-tight">Review Required</p>
+                                    <p className="text-sm text-slate-300 italic">"Does this plan align with your research goals? You can provide feedback or approve to start."</p>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => {
+                                                sendMessage('Proceed');
+                                            }}
+                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-95"
+                                        >
+                                            Looks Good, Proceed
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Loading state if no content yet */}
                             {!msg.content && msg.isStreaming && (
                                 <div className="flex items-center gap-2 text-slate-400 text-sm animate-pulse">
@@ -382,8 +426,8 @@ export const ChatInterface: React.FC = () => {
                         type="text"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="Ask a question (e.g., 'What treats Diabetes?')..."
-                        className="w-full bg-slate-800/80 backdrop-blur-md border border-white/10 rounded-xl pl-6 pr-14 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 shadow-2xl transition-all text-slate-200 placeholder-slate-500"
+                        placeholder={isPlanPending ? "Feedback or 'Proceed' to start..." : "Ask a question (e.g., 'What treats Diabetes?')..."}
+                        className={`w-full bg-slate-800/80 backdrop-blur-md border rounded-xl pl-6 pr-14 py-4 focus:outline-none focus:ring-2 shadow-2xl transition-all text-slate-200 placeholder-slate-500 ${isPlanPending ? 'border-blue-500/50 focus:ring-blue-500/50' : 'border-white/10 focus:ring-indigo-500/50'}`}
                     />
                     <button
                         type="submit"

@@ -6,12 +6,16 @@ from langchain_core.output_parsers import PydanticOutputParser
 
 from .state import (
     AgentState, Plan, ExplorationStep, SchemaAnalysis, CoverageAnalysis, 
-    LoopDetector, DecisionMaker, SynthesisPlan, AnswerOutput, QueryValidation
+    LoopDetector, DecisionMaker, SynthesisPlan, AnswerOutput, QueryValidation,
+    CommunityLog, AlignmentOutput, AnswerContract, InterpretedEvidence,
+    NegativeKnowledge, HardConstraints, QueryClassification, PlanningPhase
 )
 from .prompts import (
     VALIDATION_PROMPT, PLANNER_PROMPT, SCHEMA_EXTRACTOR_PROMPT, 
     COVERAGE_ASSESSOR_PROMPT, LOOP_DETECTOR_PROMPT, DECISION_MAKER_PROMPT, 
-    EXPLORATION_PLANNER_PROMPT, SYNTHESIS_PLANNER_PROMPT, ANSWER_GENERATOR_PROMPT
+    EXPLORATION_PLANNER_PROMPT, SYNTHESIS_PLANNER_PROMPT, ANSWER_GENERATOR_PROMPT,
+    ALIGNMENT_PROMPT, QUERY_CLASSIFIER_PROMPT, EVIDENCE_INTERPRETER_PROMPT,
+    PLAN_PROPOSAL_PROMPT, PLAN_GATEKEEPER_PROMPT
 )
 from .utils import prune_evidence, get_unique_schema
 
@@ -32,6 +36,98 @@ async def validate_query(user_input: str, llm):
         logger.warning(f"Validation error: {e}")
         return QueryValidation(is_valid=True, feedback=user_input)
 
+async def query_classifier_node(state: AgentState, llm):
+    """Define the Answer Contract for the query"""
+    parser = PydanticOutputParser(pydantic_object=QueryClassification)
+    prompt = ChatPromptTemplate.from_template(QUERY_CLASSIFIER_PROMPT + "\n{format_instructions}")
+    classifier = prompt | llm | parser
+    try:
+        result = await classifier.ainvoke({
+            "input": state["input"],
+            "format_instructions": parser.get_format_instructions()
+        })
+        logger.info(f"Answer Contract Defined: {result.contract.query_type}")
+        return {
+            "answer_contract": result.contract.dict(),
+            "hard_constraints": HardConstraints().dict()
+        }
+    except Exception as e:
+        logger.error(f"Classification failed: {e}")
+        # Default to association contract
+        default_contract = AnswerContract(
+            query_type="association", 
+            required_entity_types=["Entity"], 
+            required_predicates=["biolink:related_to"]
+        )
+        return {"answer_contract": default_contract.dict(), "hard_constraints": HardConstraints().dict()}
+
+async def plan_proposer_node(state: AgentState, llm):
+    """Generate or update the 'North Star' plan proposal"""
+    prompt = ChatPromptTemplate.from_template(PLAN_PROPOSAL_PROMPT)
+    proposer = prompt | llm
+    
+    logger.info(f"Generating plan. Feedback: {state.get('planning_feedback', 'None')}")
+    try:
+        response = await proposer.ainvoke({
+            "input": state.get("input", "Unknown Query"),
+            "previous_plan": state.get("plan_proposal", "None"),
+            "feedback": state.get("planning_feedback", "Initial proposal")
+        })
+        
+        plan = response.content.strip()
+        if not plan:
+            logger.warning("LLM returned empty plan proposal!")
+            plan = state.get("plan_proposal", "Error generating updated plan.")
+        
+        logger.info(f"Plan proposal generated (length: {len(plan)})")
+        
+        return {
+            "plan_proposal": plan,
+            "response": plan  # Return to user
+        }
+    except Exception as e:
+        logger.error(f"Plan proposal failed: {e}")
+        error_msg = f"I encountered an error generating the plan: {e}. Please try giving a simpler instruction."
+        return {
+            "plan_proposal": state.get("plan_proposal", "Error"),
+            "response": error_msg
+        }
+
+async def plan_gatekeeper_node(state: AgentState, llm):
+    """Determine if user approved the plan or provided feedback"""
+    # If the plan was just proposed in THIS turn, we don't check approval yet
+    # We only check approval if the user input is responding TO a previous proposal
+    if not state.get("plan_proposal"):
+        return {"is_plan_approved": False}
+
+    parser = PydanticOutputParser(pydantic_object=PlanningPhase)
+    prompt = ChatPromptTemplate.from_template(PLAN_GATEKEEPER_PROMPT)
+    gatekeeper = prompt | llm | parser
+    
+    try:
+        result = await gatekeeper.ainvoke({
+            "plan": state["plan_proposal"],
+            "input": state["input"],
+            "format_instructions": parser.get_format_instructions()
+        })
+        
+        logger.info(f"Planning decision: {result.decision} - {result.reasoning}")
+        
+        if result.decision == "approved":
+            return {
+                "is_plan_approved": True, 
+                "planning_feedback": "",
+                "response": ""  # Clear the plan from the response field to allow research to proceed
+            }
+        else:
+            return {
+                "is_plan_approved": False, 
+                "planning_feedback": state["input"]
+            }
+    except Exception as e:
+        logger.error(f"Plan gatekeeping failed: {e}")
+        return {"is_plan_approved": False}
+
 async def planner_node(state: AgentState, llm):
     """Initial planner - creates exploration strategy"""
     parser = PydanticOutputParser(pydantic_object=Plan)
@@ -41,12 +137,14 @@ async def planner_node(state: AgentState, llm):
     try:
         result = await planner.ainvoke({
             "input": state["input"],
+            "north_star_plan": state.get("plan_proposal", "Follow general research principles."),
+            "contract": json.dumps(state.get("answer_contract", {}), indent=2),
             "format_instructions": parser.get_format_instructions()
         })
         
-        logger.info(f"Initial plan: {result.strategy}")
+        logger.info(f"Initial step: {result.steps[0] if result.steps else 'None'}")
         return {
-            "plan": result.steps,
+            "plan": result.steps[:1], # FORCED SINGLE STEP
             "exploration_strategy": result.strategy
         }
     except Exception as e:
@@ -101,8 +199,22 @@ async def executor_node(state: AgentState, llm, tools):
                     "status": "success",
                     "data": tool_result
                 }
+                # Improved text handling for lists (MCP content blocks)
+                if isinstance(tool_result, list):
+                    # extract text from blocks if they are dicts with 'text'
+                    text_parts = []
+                    for item in tool_result:
+                        if isinstance(item, dict) and "text" in item:
+                            text_parts.append(item["text"])
+                        else:
+                            text_parts.append(str(item))
+                    result_str = "\n".join(text_parts)
+                else:
+                    result_str = str(tool_result)
+
                 # Include truncated result in history so planner sees the CURIEs
-                result_snippet = str(tool_result)[:200].replace('\n', ' ')
+                # increased limit to allow for edge summary visibility
+                result_snippet = result_str[:2000].replace('\n', ' ') 
                 output_text = f"✓ {tool_name}: {result_snippet}..."
                 logger.info("Tool executed successfully")
             except Exception as e:
@@ -134,6 +246,43 @@ async def executor_node(state: AgentState, llm, tools):
         "evidence": [evidence_item]
     }
 
+async def evidence_interpreter_node(state: AgentState, llm):
+    """Interpret raw tool output and assign strength/type"""
+    if not state.get("evidence"):
+        return {}
+        
+    parser = PydanticOutputParser(pydantic_object=InterpretedEvidence)
+    prompt = ChatPromptTemplate.from_template(EVIDENCE_INTERPRETER_PROMPT + "\n{format_instructions}")
+    interpreter = prompt | llm | parser
+    
+    last_raw = state["evidence"][-1]
+    if last_raw.get("status") != "success":
+        # Handle failures as negative knowledge
+        neg = NegativeKnowledge(
+            entity=str(last_raw.get("args", {}).get("curie", "unknown")),
+            predicate=str(last_raw.get("args", {}).get("predicate", "unknown")),
+            failure_reason=last_raw.get("data") or "Timeout/Error",
+            iteration=state.get("iteration_count", 0)
+        )
+        return {"negative_knowledge": [neg.dict()]}
+
+    try:
+        # Interpret ONLY if it's an edge (list of results or single edge)
+        # Avoid interpreting name-resolution as evidence for the contract
+        if last_raw.get("tool") not in ["get_edges", "get_edges_between"]:
+            return {}
+
+        result = await interpreter.ainvoke({
+            "raw_evidence": json.dumps(last_raw, indent=2)[:5000],
+            "contract": json.dumps(state.get("answer_contract", {}), indent=2),
+            "format_instructions": parser.get_format_instructions()
+        })
+        
+        return {"interpreted_evidence": [result.dict()]}
+    except Exception as e:
+        logger.error(f"Evidence interpretation failed: {e}")
+        return {}
+
 async def schema_analyzer_node(state: AgentState, llm):
     """Extract schema patterns ONLY - no decisions"""
     parser = PydanticOutputParser(pydantic_object=SchemaAnalysis)
@@ -142,9 +291,18 @@ async def schema_analyzer_node(state: AgentState, llm):
     
     last_evidence = state["evidence"][-1] if state["evidence"] else {}
     
+    # If last evidence is not from a graph tool, skip analysis
+    if last_evidence.get("tool") in ["name-resolver", "nodenormalizer"]:
+        return {"schema_patterns": []}
+
+    # If last evidence is a summary, use it. If it's a huge edge list, we might want to truncate or summarize.
+    evidence_str = json.dumps(last_evidence, indent=2)
+    if len(evidence_str) > 10000:
+        evidence_str = evidence_str[:10000] + "...(truncated)"
+    
     try:
         result = await analyzer.ainvoke({
-            "last_evidence": json.dumps(last_evidence, indent=2),
+            "last_evidence": evidence_str,
             "format_instructions": parser.get_format_instructions()
         })
         
@@ -197,42 +355,92 @@ async def loop_detector_node(state: AgentState, llm):
         logger.error(f"Loop detection failed: {e}")
         return {"loop_detection": json.dumps({"is_looping": False, "recommendation": "Continue"})}
 
-async def decision_maker_node(state: AgentState, llm):
-    """Make phase decision based on analyses"""
-    parser = PydanticOutputParser(pydantic_object=DecisionMaker)
-    prompt = ChatPromptTemplate.from_template(DECISION_MAKER_PROMPT + "\n{format_instructions}")
-    decider = prompt | llm | parser
-    
-    coverage_data = json.loads(state.get("coverage_assessment", "{}"))
+async def alignment_node(state: AgentState, llm):
+    """Steward the Community Log (Shared Epistemology)"""
+    parser = PydanticOutputParser(pydantic_object=AlignmentOutput)
+    prompt = ChatPromptTemplate.from_template(ALIGNMENT_PROMPT + "\n{format_instructions}")
+    aligner = prompt | llm | parser
+
+    # Default log if missing
+    current_log = state.get("community_log", {})
+    if isinstance(current_log, str):
+        try:
+           current_log = json.loads(current_log)
+        except:
+           current_log = {}
+
+    # Only run every 3 steps OR if looping is detected
+    step_count = len(state.get("past_steps", []))
     loop_data = json.loads(state.get("loop_detection", "{}"))
+    is_looping = loop_data.get("is_looping", False)
     
-    # Provide pruned evidence summary so decision maker knows what we have
+    # We run alignment:
+    # 1. At the very beginning (step_count == 0)
+    # 2. Every 3 steps (step_count % 3 == 0)
+    # 3. If looping is detected
+    should_run = (step_count == 0) or (step_count % 3 == 0) or is_looping
+    
+    if not should_run and step_count > 0:
+        logger.info("Alignment node skipping this turn (not triggered)")
+        return {} # No update
+
+    # Prepare evidence summary
     pruned_evidence = prune_evidence(state.get("evidence", []))
-    evidence_summary = "\n".join([
+    evidence_summary = "\\n".join([
         f"- {e.get('tool', 'N/A')}: {str(e.get('data', ''))[:200]}..."
         for e in pruned_evidence
         if e.get("status") == "success"
     ])
     
+    recent_steps = state.get("past_steps", [])[-5:]
+
     try:
-        result = await decider.ainvoke({
-            "coverage_score": coverage_data.get("density_score", 5),
-            "loop_status": "LOOPING" if loop_data.get("is_looping") else "OK",
-            "loop_recommendation": loop_data.get("recommendation", "None"),
-            "iteration": state.get("iteration_count", 0),
-            "max_iterations": state.get("max_iterations", 15),
-            "input": state["input"],
+        result = await aligner.ainvoke({
+            "community_log": current_log,
+            "recent_steps": str(recent_steps),
             "evidence_summary": evidence_summary,
+            "loop_detection": state.get("loop_detection", "{}"),
             "format_instructions": parser.get_format_instructions()
         })
         
-        logger.info(f"Decision: explore={result.should_explore_more}, synthesize={result.should_transition_to_synthesis}")
+        logger.info(f"Alignment Update: {result.updates_made}")
+        return {
+            "community_log": result.updated_log.dict(),
+            "hard_constraints": result.hard_constraints.dict()
+        }
+    except Exception as e:
+        logger.error(f"Alignment failed: {e}")
+        return {} # No update
+
+async def decision_maker_node(state: AgentState, llm):
+    """Make phase decision based on Answer Contract satisfaction"""
+    parser = PydanticOutputParser(pydantic_object=DecisionMaker)
+    prompt = ChatPromptTemplate.from_template(DECISION_MAKER_PROMPT + "\n{format_instructions}")
+    decider = prompt | llm | parser
+    
+    contract = state.get("answer_contract", {})
+    interpreted = state.get("interpreted_evidence", [])
+    
+    try:
+        result = await decider.ainvoke({
+            "input": state.get("input", "Unknown Query"),
+            "contract": json.dumps(contract, indent=2),
+            "interpreted_evidence": json.dumps(interpreted, indent=2),
+            "format_instructions": parser.get_format_instructions()
+        })
+        
+        # Defensive check for attributes
+        ctrl = getattr(result, "control_decision", "explore")
+        state_esc = getattr(result, "epistemic_state", "insufficient")
+        reasoning = getattr(result, "reasoning", "Proceeding with exploration.")
+        
+        logger.info(f"Decision: {ctrl} (State: {state_esc})")
         
         return {
-            "should_explore_more": result.should_explore_more,
-            "should_transition_to_synthesis": result.should_transition_to_synthesis,
-            "ready_to_answer": not result.should_explore_more,
-            "decision_reasoning": result.reasoning
+            "should_explore_more": ctrl == "explore",
+            "should_transition_to_synthesis": ctrl == "synthesize",
+            "ready_to_answer": ctrl != "explore",
+            "decision_reasoning": reasoning
         }
     except Exception as e:
         logger.error(f"Decision making failed: {e}")
@@ -254,25 +462,54 @@ async def exploration_planner_node(state: AgentState, llm):
     coverage_data = json.loads(state.get("coverage_assessment", "{}"))
     loop_data = json.loads(state.get("loop_detection", "{}"))
     
+    # Provide pruned evidence summary so planner knows what we found
+    pruned_evidence = prune_evidence(state.get("evidence", []))
+    evidence_summary = "\n".join([
+        f"- {e.get('tool', 'N/A')}: {str(e.get('data', ''))[:400]}..." # Show more context
+        for e in pruned_evidence
+        if e.get("status") == "success"
+    ])
+
+    # Parse Log
+    log_data = state.get("community_log", {})
+    if isinstance(log_data, str):
+        try: log_data = json.loads(log_data)
+        except: log_data = {}
+
+    novelty_budget = log_data.get("novelty_budget", 5)
+    resolved = log_data.get("resolved_entities", {})
+    constraints = state.get("hard_constraints", {})
+    failures = state.get("negative_knowledge", [])
+
     try:
         result = await planner.ainvoke({
-            "input": state["input"],
-            "past_steps": str(state.get("past_steps", [])[-5:]),
-            "coverage": state.get("coverage_assessment", ""),
-            "schema": "\n".join(get_unique_schema(state.get("schema_patterns", []))),
-            "loop_detection": state.get("loop_detection", ""),
-            "unexplored_predicates": str(coverage_data.get("unexplored_promising_predicates", [])),
+            "input": state.get("input", "Unknown Query"),
+            "evidence_summary": evidence_summary,
+            "contract": json.dumps(state.get("answer_contract", {}), indent=2),
+            "resolved_entities": json.dumps(resolved, indent=2),
+            "hard_constraints": json.dumps(constraints, indent=2),
+            "negative_knowledge": json.dumps(failures, indent=2),
+            "novelty_budget": novelty_budget,
+            "epistemic_status": state.get("decision_reasoning", "Starting exploration"),
+            "missing_fact": "N/A", # Will be used if DM provides it
             "format_instructions": parser.get_format_instructions()
         })
         
-        logger.info(f"Next exploration: {result.action}")
+        action = getattr(result, "action", "Get edge summary for main entity")
+        rationale = getattr(result, "rationale", "Exploring missing knowledge.")
+        
+        logger.info(f"Next exploration: {action}")
         return {
-            "plan": [result.action],
-            "planning_rationale": result.rationale
+            "plan": [action],
+            "planning_rationale": rationale
         }
     except Exception as e:
         logger.error(f"Exploration planning failed: {e}")
-        return {"plan": ["Get edge summary for main entity"]}
+        # Return a safe default action
+        return {
+            "plan": ["Get edge summary for primary concept"],
+            "planning_rationale": f"Defaulting to scouting due to planning error: {e}"
+        }
 
 async def synthesis_planner_node(state: AgentState, llm):
     """Plan how to answer the question"""

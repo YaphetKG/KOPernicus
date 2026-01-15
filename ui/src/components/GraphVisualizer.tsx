@@ -10,7 +10,7 @@ interface GraphVisualizerProps {
 
 export const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ data }) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const fgRef = useRef<any>();
+    const fgRef = useRef<any>(null);
 
     useEffect(() => {
         // Zoom to fit on load
@@ -32,11 +32,18 @@ export const GraphVisualizer: React.FC<GraphVisualizerProps> = ({ data }) => {
         <div ref={containerRef} className="w-full h-full">
             <ForceGraph2D
                 ref={fgRef}
-                graphData={data}
+                graphData={{
+                    nodes: data.nodes,
+                    links: data.edges.map(e => ({
+                        ...e,
+                        source: e.source || e.subject,
+                        target: e.target || e.object
+                    }))
+                }}
                 width={containerRef.current?.clientWidth}
                 height={containerRef.current?.clientHeight}
                 nodeLabel="name"
-                nodeColor={node => (node.type === 'ChemicalEntity' || node.id.startsWith('CHEBI')) ? '#ef4444' : (node.type === 'Disease' || node.id.startsWith('MONDO')) ? '#3b82f6' : '#10b981'}
+                nodeColor={(node: any) => (node.type === 'ChemicalEntity' || node.id?.startsWith('CHEBI')) ? '#ef4444' : (node.type === 'Disease' || node.id?.startsWith('MONDO')) ? '#3b82f6' : '#10b981'}
                 nodeRelSize={6}
                 linkColor={() => '#4b5563'}
                 linkDirectionalArrowLength={3.5}
