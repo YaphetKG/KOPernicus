@@ -25,23 +25,23 @@ def kopernicus_intro():
     BOLD = "\033[1m"
     
     ascii_art = f"""
-{CYAN}╔═══════════════════════════════════════════════════════════════════╗
-║                                                                         ║
-║           {YELLOW}██╗  ██╗ ██████╗ ██████╗ ███████╗██████╗              {CYAN}║
-║           {YELLOW}██║ ██╔╝██╔═══██╗██╔══██╗██╔════╝██╔══██╗             {CYAN}║
-║           {YELLOW}█████╔╝ ██║   ██║██████╔╝█████╗  ██████╔╝             {CYAN}║
-║           {YELLOW}██╔═██╗ ██║   ██║██╔═══╝ ██╔══╝  ██╔══██╗             {CYAN}║
-║           {YELLOW}██║  ██╗╚██████╔╝██║     ███████╗██║  ██║             {CYAN}║
-║           {YELLOW}╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═╝             {CYAN}║
-║                                                                         ║
+{CYAN}╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║           {YELLOW}██╗  ██╗ ██████╗ ██████╗ ███████╗██████╗               {CYAN}║
+║           {YELLOW}██║ ██╔╝██╔═══██╗██╔══██╗██╔════╝██╔══██╗              {CYAN}║
+║           {YELLOW}█████╔╝ ██║   ██║██████╔╝█████╗  ██████╔╝              {CYAN}║
+║           {YELLOW}██╔═██╗ ██║   ██║██╔═══╝ ██╔══╝  ██╔══██╗              {CYAN}║
+║           {YELLOW}██║  ██╗╚██████╔╝██║     ███████╗██║  ██║              {CYAN}║
+║           {YELLOW}╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═╝              {CYAN}║
+║                                                                  ║
 ║              {BLUE}███╗   ██╗██╗ ██████╗██╗   ██╗███████╗              {CYAN}║
 ║              {BLUE}████╗  ██║██║██╔════╝██║   ██║██╔════╝              {CYAN}║
 ║              {BLUE}██╔██╗ ██║██║██║     ██║   ██║███████╗              {CYAN}║
 ║              {BLUE}██║╚██╗██║██║██║     ██║   ██║╚════██║              {CYAN}║
 ║              {BLUE}██║ ╚████║██║╚██████╗╚██████╔╝███████║              {CYAN}║
 ║              {BLUE}╚═╝  ╚═══╝╚═╝ ╚═════╝ ╚═════╝ ╚══════╝              {CYAN}║
-║                                                                         ║
-╚═══════════════════════════════════════════════════════════════════╝{RESET}
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝{RESET}
 """
     
     # Print the ASCII art
@@ -49,16 +49,7 @@ def kopernicus_intro():
     
     # Print tagline with typewriter effect
     time.sleep(0.5)
-    print_slow(f"{BOLD}{YELLOW}        🌟 Exploring the Cosmos of Knowledge 🌟{RESET}", 0.05)
-    time.sleep(0.3)
-    print_slow(f"{CYAN}              Initiating systems...{RESET}", 0.04)
-    
-    # Loading animation
-    print(f"\n{BLUE}              [", end="")
-    for i in range(20):
-        print("█", end="", flush=True)
-        time.sleep(0.08)
-    print(f"] 100%{RESET}\n")
-    
-    time.sleep(0.5)
-    print(f"{BOLD}{YELLOW}              System Ready. Welcome!{RESET}\n")
+    print_slow(f"        🌟 Exploring the Cosmos of Knowledge Graphs 🌟", 0.05)
+
+    print(f"{BOLD}{YELLOW}              Welcome!{RESET}\n")
+

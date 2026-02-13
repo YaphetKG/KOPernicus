@@ -21,6 +21,8 @@ dependencies = [
     "robokop-mcp",
     "sse-starlette>=3.1.2",
     "uvicorn>=0.40.0",
+    "grandalf",
+    "langchain-community>=0.4.1",
 ]
 
 [tool.uv.sources]

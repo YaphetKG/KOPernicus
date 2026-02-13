@@ -25,6 +25,7 @@ INVALID queries:
 - Conversational: "Hello"
 
 User input: "{input}"
+{format_instructions}
 """
 
 QUERY_CLASSIFIER_PROMPT = MISSION_CONTEXT + """
@@ -32,6 +33,9 @@ You are the Scientific Architect.
 Your goal is to define the "Answer Contract" for the research team.
 
 User Input: "{input}"
+
+
+Current_Approved_plan: {approved_plan}
 
 Available Categories:
 - treatment: Finding chemicals/drugs that treat a disease.
@@ -45,22 +49,33 @@ Required Entities/Predicates Examples:
 
 Define the contract based on the user's intent.
 CRITICAL: Output ONLY valid JSON. No conversational filler or preamble.
+{format_instructions}
 """
 
 PLAN_PROPOSAL_PROMPT = MISSION_CONTEXT + """
 You are the Strategic Planner.
-Your goal is to propose a "North Star" Research Plan for the team.
+Your goal is to propose a Research Plan for the team that stays GROUNDED in the original query.
 
-Original Goal: "{input}"
+Original Goal: "{original_query}"
 Current Plan: {previous_plan}
 Recent Feedback/Edits: {feedback}
 
-STRICT GUIDELINES:
-1. You MUST incorporate all "Recent Feedback/Edits" into the updated plan. This is your HIGHEST PRIORITY.
-2. If this is the initial plan, ignore the 'Current Plan' and 'Recent Feedback' sections.
-3. The plan should be a logical sequence of research steps (Entity Resolution -> Path Discovery -> Mechanism Analysis -> Synthesis).
-4. Always output the COMPLETE, updated plan. Do not just list changes. Use the feedback to ADD, REMOVE or MODIFY steps.
-5. Do NOT include conversational preamble. Start directly with the plan title.
+STRICT GROUNDING GUIDELINES:
+1. Your PRIMARY goal is to satisfy the "Original Goal".
+2. Create a "North Star" research plan that explicitly names the target biological entities (diseases, drugs, genes) from the Original Goal.
+3. Every iteration of the plan MUST retain the core objective of the Original Goal.
+4. The plan should be a logical sequence of research steps (Entity Resolution -> Path Discovery -> Mechanism Analysis -> Synthesis).
+5. Use "Recent Feedback/Edits" to REFINE the approach to the Original Goal. Do not let feedback cause you to abandon the original research intent.
+6. The final plan must be self-contained and descriptive enough to guide a research team even if they haven't seen the previous feedback.
+7. Always output the COMPLETE, updated plan. Do not just list changes.
+8. Do NOT include conversational preamble. Start directly with the plan title.
+
+RESEARCH STANCE:
+- Propose a plan that reflects scientific judgment, not exhaustive coverage.
+- Prefer a small number of well-motivated steps over many shallow ones.
+- Make implicit assumptions visible where they guide the plan.
+- The plan should feel like a thoughtful first draft a research group would refine, not a checklist.
+
 
 Output ONLY the text of the detailed plan.
 """
@@ -68,9 +83,6 @@ Output ONLY the text of the detailed plan.
 PLAN_GATEKEEPER_PROMPT = MISSION_CONTEXT + """
 You are the Protocol Officer.
 Analyze the user's message to decide if we proceed to execution or iterate on the plan.
-
-Proposed Plan:
-{plan}
 
 User's Latest Message:
 "{input}"
@@ -83,10 +95,10 @@ Categorize as 'feedback' if they want changes, ask questions, or provide new inf
 Users providing "feedback" will usually use verbs like "add", "change", "remove", or ask "can you...".
 
 Categories:
-- approved: Use this if the user wants to start or says "proceed", "go", "looks good", etc.
-- feedback: Use this if the user has questions, changes, or new info.
+- approved: User wants to start or says "proceed", "go", "looks good", etc.
+- feedback: User has questions, changes, or new info.
 
-Output your decision as a JSON object.
+Output ONLY valid JSON.
 {format_instructions}
 """
 
@@ -115,6 +127,7 @@ Usually, this is a name-resolution step for the primary entity.
 
 Question: {input}
 CRITICAL: Output ONLY valid JSON. One action only.
+{format_instructions}
 """
 
 SCHEMA_EXTRACTOR_PROMPT = MISSION_CONTEXT + """
@@ -129,6 +142,7 @@ Guidelines:
 - If the output contains counts (summary), extract those types.
 - If the output contains specific edges, extract those types.
 - Return ONLY the requested JSON.
+{format_instructions}
 """
 
 EVIDENCE_INTERPRETER_PROMPT = MISSION_CONTEXT + """
@@ -153,6 +167,7 @@ Tasks:
    - 1: Weak or questionable association.
 
 CRITICAL: Output ONLY valid JSON.
+{format_instructions}
 """
 
 COVERAGE_ASSESSOR_PROMPT = MISSION_CONTEXT + """
@@ -195,6 +210,8 @@ Avoid rewarding exploration that:
 - Introduces unrelated diseases or entities
 - Repeats similar low-yield steps
 - Does not reduce uncertainty in the final answer
+
+{format_instructions}
 """
 
 LOOP_DETECTOR_PROMPT = MISSION_CONTEXT + """
@@ -218,6 +235,7 @@ If looping, you must be PRESCRIPTIVE:
 Schema patterns:
 {schema_patterns}
 
+{format_instructions}
 """
 
 DECISION_MAKER_PROMPT = MISSION_CONTEXT + """
@@ -256,6 +274,7 @@ Provide:
 - missing_explanatory_fact (if explore)
 
 CRITICAL: Output ONLY valid JSON.
+{format_instructions}
 """
 
 EXPLORATION_PLANNER_PROMPT = MISSION_CONTEXT + """
@@ -305,6 +324,8 @@ CRITICAL:
 - Do NOT output a tool call structure (name/arguments). 
 - Use the 'action' field to describe the tool call in natural language if needed, or follow the schema.
 - No conversational filler.
+
+{format_instructions}
 """
 
 SYNTHESIS_PLANNER_PROMPT = MISSION_CONTEXT + """
@@ -325,6 +346,8 @@ Create an outline:
 1. What sections to cover
 2. Which evidence items to cite
 3. Structure of answer
+
+{format_instructions}
 """
 
 ANSWER_GENERATOR_PROMPT = MISSION_CONTEXT + """
@@ -358,6 +381,8 @@ Example good answer:
 Example bad answer:
 "Metformin treats diabetes..." (missing CURIEs!)
 "Drug1 (CHEBI:123), Drug2 (CHEBI:123)..." (reused CURIE!)
+
+{format_instructions}
 """
 
 ALIGNMENT_PROMPT = MISSION_CONTEXT + """
@@ -396,4 +421,5 @@ Your Tasks:
    - Add them to `hard_constraints`.
 
 Output the updated Community Log and Hard Constraints.
+{format_instructions}
 """

@@ -8,6 +8,7 @@ class InputState(TypedDict):
 
 class AgentState(TypedDict):
     input: str
+    original_query: NotRequired[str]
     plan: NotRequired[List[str]]
     past_steps: NotRequired[Annotated[List[Tuple], operator.add]]
     evidence: NotRequired[Annotated[List[Dict], operator.add]]
@@ -196,4 +197,3 @@ class QueryClassification(BaseModel):
 class PlanningPhase(BaseModel):
     """Decision from the gatekeeper"""
     decision: Literal["approved", "feedback"]
-    reasoning: str

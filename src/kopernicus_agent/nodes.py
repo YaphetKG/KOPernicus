@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 async def validate_query(user_input: str, llm):
     parser = PydanticOutputParser(pydantic_object=QueryValidation)
-    prompt = ChatPromptTemplate.from_template(VALIDATION_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(VALIDATION_PROMPT)
     validator = prompt | llm | parser
     try:
         result = await validator.ainvoke({
@@ -39,7 +39,7 @@ async def validate_query(user_input: str, llm):
 async def query_classifier_node(state: AgentState, llm):
     """Define the Answer Contract for the query"""
     parser = PydanticOutputParser(pydantic_object=QueryClassification)
-    prompt = ChatPromptTemplate.from_template(QUERY_CLASSIFIER_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(QUERY_CLASSIFIER_PROMPT)
     classifier = prompt | llm | parser
     try:
         result = await classifier.ainvoke({
@@ -48,6 +48,7 @@ async def query_classifier_node(state: AgentState, llm):
         })
         logger.info(f"Answer Contract Defined: {result.contract.query_type}")
         return {
+            "original_query": state["input"],
             "answer_contract": result.contract.dict(),
             "hard_constraints": HardConstraints().dict()
         }
@@ -69,7 +70,7 @@ async def plan_proposer_node(state: AgentState, llm):
     logger.info(f"Generating plan. Feedback: {state.get('planning_feedback', 'None')}")
     try:
         response = await proposer.ainvoke({
-            "input": state.get("input", "Unknown Query"),
+            "original_query": state.get("original_query", state.get("input", "Unknown Query")),
             "previous_plan": state.get("plan_proposal", "None"),
             "feedback": state.get("planning_feedback", "Initial proposal")
         })
@@ -105,13 +106,12 @@ async def plan_gatekeeper_node(state: AgentState, llm):
     gatekeeper = prompt | llm | parser
     
     try:
-        result = await gatekeeper.ainvoke({
-            "plan": state["plan_proposal"],
+        result = await gatekeeper.ainvoke({            
             "input": state["input"],
             "format_instructions": parser.get_format_instructions()
         })
         
-        logger.info(f"Planning decision: {result.decision} - {result.reasoning}")
+        logger.info(f"Planning decision: {result.decision}")
         
         if result.decision == "approved":
             return {
@@ -131,12 +131,12 @@ async def plan_gatekeeper_node(state: AgentState, llm):
 async def planner_node(state: AgentState, llm):
     """Initial planner - creates exploration strategy"""
     parser = PydanticOutputParser(pydantic_object=Plan)
-    prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT)
     planner = prompt | llm | parser
     
     try:
         result = await planner.ainvoke({
-            "input": state["input"],
+            "input": state.get("original_query", state["input"]),
             "north_star_plan": state.get("plan_proposal", "Follow general research principles."),
             "contract": json.dumps(state.get("answer_contract", {}), indent=2),
             "format_instructions": parser.get_format_instructions()
@@ -252,7 +252,7 @@ async def evidence_interpreter_node(state: AgentState, llm):
         return {}
         
     parser = PydanticOutputParser(pydantic_object=InterpretedEvidence)
-    prompt = ChatPromptTemplate.from_template(EVIDENCE_INTERPRETER_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(EVIDENCE_INTERPRETER_PROMPT)
     interpreter = prompt | llm | parser
     
     last_raw = state["evidence"][-1]
@@ -286,7 +286,7 @@ async def evidence_interpreter_node(state: AgentState, llm):
 async def schema_analyzer_node(state: AgentState, llm):
     """Extract schema patterns ONLY - no decisions"""
     parser = PydanticOutputParser(pydantic_object=SchemaAnalysis)
-    prompt = ChatPromptTemplate.from_template(SCHEMA_EXTRACTOR_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(SCHEMA_EXTRACTOR_PROMPT)
     analyzer = prompt | llm | parser
     
     last_evidence = state["evidence"][-1] if state["evidence"] else {}
@@ -315,7 +315,7 @@ async def schema_analyzer_node(state: AgentState, llm):
 async def coverage_analyzer_node(state: AgentState, llm):
     """Assess coverage ONLY - no decisions"""
     parser = PydanticOutputParser(pydantic_object=CoverageAnalysis)
-    prompt = ChatPromptTemplate.from_template(COVERAGE_ASSESSOR_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(COVERAGE_ASSESSOR_PROMPT)
     analyzer = prompt | llm | parser
     
     try:
@@ -335,7 +335,7 @@ async def coverage_analyzer_node(state: AgentState, llm):
 async def loop_detector_node(state: AgentState, llm):
     """Detect loops ONLY - no decisions"""
     parser = PydanticOutputParser(pydantic_object=LoopDetector)
-    prompt = ChatPromptTemplate.from_template(LOOP_DETECTOR_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(LOOP_DETECTOR_PROMPT)
     detector = prompt | llm | parser
     
     recent_steps = state.get("past_steps", [])[-5:]
@@ -358,7 +358,7 @@ async def loop_detector_node(state: AgentState, llm):
 async def alignment_node(state: AgentState, llm):
     """Steward the Community Log (Shared Epistemology)"""
     parser = PydanticOutputParser(pydantic_object=AlignmentOutput)
-    prompt = ChatPromptTemplate.from_template(ALIGNMENT_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(ALIGNMENT_PROMPT)
     aligner = prompt | llm | parser
 
     # Default log if missing
@@ -415,7 +415,7 @@ async def alignment_node(state: AgentState, llm):
 async def decision_maker_node(state: AgentState, llm):
     """Make phase decision based on Answer Contract satisfaction"""
     parser = PydanticOutputParser(pydantic_object=DecisionMaker)
-    prompt = ChatPromptTemplate.from_template(DECISION_MAKER_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(DECISION_MAKER_PROMPT)
     decider = prompt | llm | parser
     
     contract = state.get("answer_contract", {})
@@ -456,7 +456,7 @@ async def decision_maker_node(state: AgentState, llm):
 async def exploration_planner_node(state: AgentState, llm):
     """Plan next exploration step"""
     parser = PydanticOutputParser(pydantic_object=ExplorationStep)
-    prompt = ChatPromptTemplate.from_template(EXPLORATION_PLANNER_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(EXPLORATION_PLANNER_PROMPT)
     planner = prompt | llm | parser
     
     coverage_data = json.loads(state.get("coverage_assessment", "{}"))
@@ -514,7 +514,7 @@ async def exploration_planner_node(state: AgentState, llm):
 async def synthesis_planner_node(state: AgentState, llm):
     """Plan how to answer the question"""
     parser = PydanticOutputParser(pydantic_object=SynthesisPlan)
-    prompt = ChatPromptTemplate.from_template(SYNTHESIS_PLANNER_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(SYNTHESIS_PLANNER_PROMPT)
     planner = prompt | llm | parser
     
     # Provide pruned evidence summary
@@ -542,7 +542,7 @@ async def synthesis_planner_node(state: AgentState, llm):
 async def answer_generator_node(state: AgentState, llm):
     """Generate final answer with proper citations"""
     parser = PydanticOutputParser(pydantic_object=AnswerOutput)
-    prompt = ChatPromptTemplate.from_template(ANSWER_GENERATOR_PROMPT + "\n{format_instructions}")
+    prompt = ChatPromptTemplate.from_template(ANSWER_GENERATOR_PROMPT)
     generator = prompt | llm | parser
     
     # Get successful evidence with full detail
