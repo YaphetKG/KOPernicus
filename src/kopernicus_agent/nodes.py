@@ -190,6 +190,48 @@ async def executor_node(state: AgentState, llm, tools):
         selected_tool = next((t for t in tools if t.name == tool_name), None)
         
         if selected_tool:
+            # --- Hard Constraint Enforcement ---
+            constraints = state.get("hard_constraints", {})
+            forbidden_preds = constraints.get("forbidden_predicates", [])
+            forbidden_entities = constraints.get("forbidden_entities", [])
+            forbidden_continuations = constraints.get("forbidden_continuations", [])
+            
+            # Check Predicates
+            if tool_name in ["get_edges", "get_edge_summary"]:
+                pred = tool_args.get("predicate")
+                source = tool_args.get("source_node") or tool_args.get("subject") or tool_args.get("source")
+                
+                # 1. Global Predicate Ban
+                if pred and pred in forbidden_preds:
+                    error_msg = f"Action blocked: The predicate '{pred}' is globally forbidden."
+                    logger.warning(error_msg)
+                    return {
+                        "past_steps": [(task, error_msg)],
+                        "evidence": [{"step": task, "status": "failed", "data": error_msg}]
+                    }
+                
+                # 2. Granular Triple Ban (Source + Predicate)
+                if pred and source:
+                    for fc in forbidden_continuations:
+                        if fc.get("source") == source and fc.get("predicate") == pred:
+                            error_msg = f"Action blocked: The path {source} --[{pred}]--> * is forbidden due to loops."
+                            logger.warning(error_msg)
+                            return {
+                                "past_steps": [(task, error_msg)],
+                                "evidence": [{"step": task, "status": "failed", "data": error_msg}]
+                            }
+
+            # Check Entities (Source or Target)
+            for arg_val in tool_args.values():
+                if isinstance(arg_val, str) and arg_val in forbidden_entities:
+                     error_msg = f"Action blocked: The entity '{arg_val}' is globally forbidden."
+                     logger.warning(error_msg)
+                     return {
+                        "past_steps": [(task, error_msg)],
+                        "evidence": [{"step": task, "status": "failed", "data": error_msg}]
+                    }
+            # -----------------------------------
+
             try:
                 tool_result = await selected_tool.ainvoke(tool_args)
                 evidence_item = {

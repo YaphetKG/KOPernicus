@@ -136,6 +136,10 @@ class HardConstraints(BaseModel):
     """Enforceable constraints for the planner"""
     forbidden_entities: List[str] = Field(default_factory=list)
     forbidden_predicates: List[str] = Field(default_factory=list)
+    forbidden_continuations: List[Dict[str, str]] = Field(
+        default_factory=list, 
+        description="Forbidden triples/continuations. e.g. [{'source': 'A', 'predicate': 'B'}]"
+    )
     locked_anchor_entities: List[str] = Field(default_factory=list)
 
 class CommunityLog(BaseModel):

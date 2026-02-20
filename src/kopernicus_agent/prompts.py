@@ -414,11 +414,10 @@ Your Tasks:
    - ADJUST `novelty_budget`:
      - If we are stuck verifying, INCREASE budget (allow wilder jumps).
      - If we are drifting, DECREASE budget (force focus).
-5. REFRAME GOAL:
-   - Update `global_goal_reframed` to reflect what we are *actually* doing now.
-6. ENFORCE CONSTRAINTS:
-   - Identify entities or predicates leading to loops or noise.
-   - Add them to `hard_constraints`.
+   - ENFORCE CONSTRAINTS:
+     - Identify SPECIFIC query patterns causing loops (e.g. "Source node X + Predicate Y").
+     - Add them to `forbidden_continuations` as `{{"source": "X", "predicate": "Y"}}`.
+     - ONLY use global `forbidden_predicates` if the predicate itself is the problem regardless of source.
 
 Output the updated Community Log and Hard Constraints.
 {format_instructions}
