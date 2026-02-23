@@ -3,7 +3,7 @@ import asyncio
 import json
 from langchain_community.chat_models.fake import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, SystemMessage
-from src.kopernicus_agent.nodes import plan_proposer_node, plan_gatekeeper_node, planner_node, executor_node
+from src.kopernicus_agent.nodes import PlanProposerNode, PlanGatekeeperNode, PlannerNode, ExecutorNode
 from src.kopernicus_agent.state import AgentState
 
 # Mock Tools
@@ -57,7 +57,7 @@ async def test_nodes():
     
     print("  Testing Blocked Call...")
     try:
-        res_blocked = await executor_node(state_constraints, mock_exec_llm_blocked, tools)
+        res_blocked = await ExecutorNode()(state_constraints, mock_exec_llm_blocked, tools)
         steps = res_blocked.get("past_steps", [])
         if steps and "Action blocked" in steps[0][1] and "forbidden due to loops" in steps[0][1]:
              print(f"  ✓ Correctly blocked specific triple: {steps[0][1]}")
@@ -71,7 +71,7 @@ async def test_nodes():
     mock_exec_llm_allowed = MockExecutorLLM("get_edges", {"source": "CHEBI:999", "predicate": forbidden_pred})
     
     try:
-        res_allowed = await executor_node(state_constraints, mock_exec_llm_allowed, tools)
+        res_allowed = await ExecutorNode()(state_constraints, mock_exec_llm_allowed, tools)
         steps = res_allowed.get("past_steps", [])
         # Should NOT have "Action blocked"
         if not steps: # Success implies no error steps returned in the error format I defined? 

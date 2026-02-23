@@ -6,7 +6,7 @@ root = Path(__file__).resolve().parent.parent.parent.parent
 if str(root) not in sys.path:
     sys.path.append(str(root))
 
-from src.kopernicus_agent.nodes import plan_proposer_node, plan_gatekeeper_node, planner_node
+from src.kopernicus_agent.nodes import PlanProposerNode, PlanGatekeeperNode, PlannerNode
 from src.kopernicus_agent.state import AgentState
 from src.kopernicus_agent.llm import LLMFactory
 from src.kopernicus_agent.workflow import create_agent_graph
@@ -52,9 +52,9 @@ Inclusion of both pharmacologic and non‑pharmacologic interventions.
 Reliance on publicly available biomedical knowledge graphs (e.g., KOPernicus KG) for evidence retrieval and integration."""
 ,
     }
-    # result = await plan_proposer_node(state , llm)
+    # result = await PlanProposerNode()(state, llm)
     # print(result['plan_proposal'])
-    result = await planner_node(state , llm)
+    result = await PlannerNode()(state, llm)
     print(result)
 
 async def test_agent_structure():

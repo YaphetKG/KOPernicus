@@ -3,7 +3,7 @@ import asyncio
 import json
 from unittest.mock import MagicMock, AsyncMock
 from langchain_core.prompts import ChatPromptTemplate
-from src.kopernicus_agent.nodes import query_classifier_node, validate_query
+from src.kopernicus_agent.nodes import QueryClassifierNode, QueryValidatorNode
 from src.kopernicus_agent.state import AgentState
 
 async def test_json_hardening():
@@ -47,7 +47,7 @@ async def test_json_hardening():
         # If the template is missing {format_instructions}, it will crash during ainvoke 
         # because the node passes 'format_instructions' in the dictionary.
         
-        result = await query_classifier_node(state, mock_llm)
+        result = await QueryClassifierNode()(state, mock_llm)
         print("✓ query_classifier_node executed successfully.")
         print(f"  Result query_type: {result['answer_contract']['query_type']}")
         
@@ -61,7 +61,7 @@ async def test_json_hardening():
     print("\nTesting validate_query...")
     mock_llm.ainvoke.return_value = MagicMock(content='{"is_valid": true, "feedback": "valid query"}')
     try:
-        result = await validate_query("What treats diabetes?", mock_llm)
+        result = await QueryValidatorNode().validate("What treats diabetes?", mock_llm)
         print("✓ validate_query executed successfully.")
     except Exception as e:
         print(f"✗ validate_query encountered an error: {e}")

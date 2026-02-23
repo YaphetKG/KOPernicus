@@ -4,10 +4,12 @@ __pycache__/
 *$py.class
 .agent/
 .vscode/
+env-vars
 
 # C extensions
 *.so
-langfuse_config.json    
+langfuse_config*.json
+
 # Distribution / packaging
 .Python
 build/

@@ -4,22 +4,18 @@ import logging
 import traceback
 import sys
 import os
-from pathlib import Path
+import argparse
 from pathlib import Path
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from .llm import LLMFactory
 from .workflow import create_agent_graph
-from .nodes import validate_query
-from .intro import kopernicus_intro
+from .nodes import QueryValidatorNode
 from .utils import setup_langfuse_tracing
+from .logging_config import setup_logging
 
 # --- Setup Logging ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+logger = setup_logging()
 
 def get_mcp_client():
     # Try current directory first, then package directory
@@ -42,7 +38,7 @@ def get_mcp_client():
         mcp_config = json.load(file)
     return MultiServerMCPClient(mcp_config["mcpServers"])
 
-async def main(query: str = None):
+async def main(query: str = None, auto_approve: bool = False):
     
     try:
         mcp_client = get_mcp_client()
@@ -54,8 +50,9 @@ async def main(query: str = None):
 
     llm = LLMFactory.get_llm(provider=os.getenv("LLM_PROVIDER", "openai"))
     app = create_agent_graph(llm, tools)
+    validator = QueryValidatorNode()
     
-    kopernicus_intro()
+    # kopernicus_intro()
     print(" Architecture: Decomposed Single-Responsibility Nodes")
     print("="*60 + "\n")
 
@@ -85,8 +82,16 @@ async def main(query: str = None):
                 if query and current_state.get("ready_to_answer"):
                     break
                 
-                prompt_prefix = "Query" if not current_state.get("plan_proposal") else "Plan Feedback/Approval"
-                user_input = input(f"{prompt_prefix}> ")
+                # Auto-approve logic: if we just got a plan and auto_approve is on, proceed.
+                # Guard: only auto-approve if the plan is non-empty and not an error placeholder.
+                plan_text = current_state.get("plan_proposal", "") or ""
+                plan_ok = plan_text and plan_text.strip().lower() not in ("error", "")
+                if auto_approve and plan_ok and not current_state.get("is_plan_approved"):
+                    print("Plan Feedback/Approval> Proceed (Auto-approved)")
+                    user_input = "Proceed"
+                else:
+                    prompt_prefix = "Query" if not current_state.get("plan_proposal") else "Plan Feedback/Approval"
+                    user_input = input(f"{prompt_prefix}> ")
             
             first_run = False
             if user_input.lower() in ["quit", "exit"]:
@@ -97,7 +102,7 @@ async def main(query: str = None):
 
             # Only validate if we don't have a plan yet (initial query)
             if not current_state.get("plan_proposal"):
-                validation = await validate_query(user_input, llm)
+                validation = await validator.validate(user_input, llm)
                 if not validation.is_valid:
                     print(f"⚠️  {validation.feedback}")
                     continue
@@ -108,7 +113,7 @@ async def main(query: str = None):
                 print(f"\n🔬 Researching...\n")
             
             langfuse_handler = setup_langfuse_tracing()
-            callbacks = [langfuse_handler] if langfuse_handler else []
+            callbacks = [] # [langfuse_handler] if langfuse_handler else []
             
             config = {"recursion_limit": 1000, "callbacks": callbacks, "configurable": {"thread_id": "cli_session"}}
             
@@ -118,51 +123,60 @@ async def main(query: str = None):
                     if node_name == "plan_proposer":
                         plan = state_update.get("plan_proposal")
                         if plan:
-                            print(f"\n{'='*20} PROPOSED NORTH STAR PLAN {'='*20}")
-                            print(plan)
-                            print(f"{'='*66}\n")
-                            print("Instructions: Type 'Proceed' to start or provide feedback to refine the plan.")
+                            logger.info(f"\n{'='*20} PROPOSED NORTH STAR PLAN {'='*20}")
+                            logger.info(plan)
+                            logger.info(f"{'='*66}\n")
+                            if not auto_approve:
+                                print("Instructions: Type 'Proceed' to start or provide feedback to refine the plan.")
                     elif node_name == "planner":
-                        print(f"📋 Initial Strategy: {state_update.get('exploration_strategy')}")
+                        logger.info(f"📋 Initial Strategy: {state_update.get('exploration_strategy')}")
                     elif node_name == "executor":
                         # In updates mode, state_update has ONLY the new steps added in this turn
                         steps = state_update.get('past_steps', [])
                         if steps:
-                            print(f"🔨 Executed: {steps[-1][1]}")
+                            logger.info(f"🔨 Executed: {steps[-1][1]}")
                     elif node_name == "schema_analyzer":
-                        print(f"🔍 Analyzing schema patterns...")
+                        logger.info(f"🔍 Analyzing schema patterns...")
                     elif node_name == "coverage_analyzer":
                         data = json.loads(state_update.get('coverage_assessment', '{}'))
                         score = data.get('density_score', 0)
-                        print(f"📊 Coverage: {score}/10")
+                        logger.info(f"📊 Coverage: {score}/10")
                     elif node_name == "decision_maker":
                         synth = state_update.get('should_transition_to_synthesis', False)
                         if synth:
-                            print(f"✨ Transitioning to synthesis...")
+                            logger.info(f"✨ Transitioning to synthesis...")
                     elif node_name == "exploration_planner":
                         plan_steps = state_update.get('plan', [])
                         if plan_steps:
-                            print(f"➡️  Next idea: {plan_steps[0][:80]}...")
+                            logger.info(f"➡️  Next idea: {plan_steps[0][:80]}...")
                     elif node_name == "answer_generator":
                         response = state_update.get("response")
                         if response:
-                            print(f"\n{'='*20} FINAL SCIENTIFIC ANSWER {'='*20}")
-                            print(response)
-                            print(f"{'='*64}\n")
+                            logger.info(f"\n{'='*20} FINAL SCIENTIFIC ANSWER {'='*20}")
+                            logger.info(response)
+                            logger.info(f"{'='*64}\n")
 
             # GET FINAL PERSISTED STATE
             final_snapshot = await app.aget_state(config)
             current_state = final_snapshot.values
 
-            # If we just got an answer, reset for a clean next query
+            # If we just got an answer:
+            # - In single-query mode (query arg provided), exit immediately.
+            # - In interactive mode, reset state for the next question.
             if current_state.get("ready_to_answer"):
+                if query:
+                    break
                 current_state["plan_proposal"] = None
                 current_state["is_plan_approved"] = False
+                current_state["ready_to_answer"] = False
                 current_state["input"] = ""
                 current_state["past_steps"] = []
                 current_state["evidence"] = []
                 current_state["iteration_count"] = 0
 
+        except EOFError:
+            logger.info("stdin closed (EOF), exiting")
+            break
         except KeyboardInterrupt:
             logger.info("Interrupted by user")
             break
@@ -170,10 +184,18 @@ async def main(query: str = None):
             logger.error(f"ERROR: {e}", exc_info=True)
             print(f"\n❌ ERROR: {e}")
             traceback.print_exc()
+            # Recover checkpoint state so ready_to_answer / is_plan_approved are accurate
+            try:
+                final_snapshot = await app.aget_state(config)
+                current_state = final_snapshot.values
+            except Exception:
+                pass  # keep current_state as-is
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        query = sys.argv[1]
-        asyncio.run(main(query=query))
-    else:
-        asyncio.run(main())
+    parser = argparse.ArgumentParser(description="KOPernicus Research Agent CLI")
+    parser.add_argument("query", nargs="?", help="Initial research query")
+    parser.add_argument("--auto-approve", action="store_true", help="Automatically approve proposed research plans")
+    
+    args = parser.parse_args()
+    
+    asyncio.run(main(query=args.query, auto_approve=args.auto_approve))
