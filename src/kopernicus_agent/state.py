@@ -136,6 +136,10 @@ class HardConstraints(BaseModel):
     """Enforceable constraints for the planner"""
     forbidden_entities: List[str] = Field(default_factory=list)
     forbidden_predicates: List[str] = Field(default_factory=list)
+    forbidden_continuations: List[Dict[str, str]] = Field(
+        default_factory=list, 
+        description="Forbidden triples/continuations. e.g. [{'source': 'A', 'predicate': 'B'}]"
+    )
     locked_anchor_entities: List[str] = Field(default_factory=list)
 
 class CommunityLog(BaseModel):
@@ -170,6 +174,13 @@ class AnswerContract(BaseModel):
     min_path_length: int = 1
     max_path_length: int = 3
     requires_direct_evidence: bool = False
+    min_unique_entities: int = Field(
+        default=1,
+        description=(
+            "Minimum number of unique treatment entities required before synthesizing. "
+            "E.g. 3 for treatment queries (want multiple drugs), 1 for mechanism/association."
+        )
+    )
 
 class InterpretedEvidence(BaseModel):
     """Evidence with scientific weight and interpretation"""
@@ -180,6 +191,10 @@ class InterpretedEvidence(BaseModel):
     strength_score: int = Field(ge=1, le=5)
     source_step: str
     rationale: str
+
+class InterpretedEvidenceList(BaseModel):
+    """Wrapper so the LLM can return multiple interpreted evidence items at once."""
+    items: List[InterpretedEvidence]
 
 class NegativeKnowledge(BaseModel):
     """Knowledge of what DOES NOT work or exist"""

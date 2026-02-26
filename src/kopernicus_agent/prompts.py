@@ -31,9 +31,10 @@ User input: "{input}"
 QUERY_CLASSIFIER_PROMPT = MISSION_CONTEXT + """
 You are the Scientific Architect.
 Your goal is to define the "Answer Contract" for the research team.
+This contract is generated AFTER the research plan has been approved, so use
+the approved plan to inform which entities and predicates are truly needed.
 
 User Input: "{input}"
-
 
 Current_Approved_plan: {approved_plan}
 
@@ -43,11 +44,24 @@ Available Categories:
 - association: Finding any link between two entities.
 - hypothesis: Generating new links for an under-studied entity.
 
-Required Entities/Predicates Examples:
-- Treatment -> chemical_entity, disease; biolink:treats, biolink:interacts_with
-- Mechanism -> chemical_entity, gene, pathway; biolink:affects, biolink:regulates
+Required Entities/Predicates — USE ONLY PREDICATES KNOWN TO EXIST IN THE ROBOKOP GRAPH:
+- Treatment -> chemical_entity, disease; biolink:treats, biolink:treats_or_applied_or_studied_to_treat
+- Mechanism -> chemical_entity, gene, pathway; biolink:affects, biolink:regulates, biolink:directly_physically_interacts_with
 
-Define the contract based on the user's intent.
+BANNED PREDICATES (absent or essentially empty in RoboKOP — do NOT include in the contract):
+- biolink:has_indication   (returns phantom 'Unknown' edges; use biolink:treats instead)
+- biolink:interacts_with   (too vague; prefer biolink:directly_physically_interacts_with)
+
+IMPORTANT: Keep required_predicates to AT MOST TWO well-established predicates.
+A focused contract is better than an overspecified one.
+
+Set min_unique_entities based on the question type:
+- treatment: 3  (the user wants MULTIPLE treatments, not just one example)
+- mechanism: 1  (one mechanistic path with supporting genes/proteins is sufficient)
+- association: 1
+- hypothesis: 1
+
+Define the contract based on the user's intent and approved plan.
 CRITICAL: Output ONLY valid JSON. No conversational filler or preamble.
 {format_instructions}
 """
@@ -123,7 +137,15 @@ Available Tools:
 
 Strategy:
 Emit exactly ONE initial action to begin satisfying the contract.
-Usually, this is a name-resolution step for the primary entity.
+For TREATMENT queries: the primary entity is the DISEASE. Always resolve the disease first.
+For MECHANISM queries: resolve the drug/chemical first.
+IMPORTANT: The standard opening sequence is:
+  1. name-resolver (lookup) → get canonical CURIE for the primary entity
+     NOTE: normalization is automatic — the system will call nodenormalizer
+     immediately after lookup returns. Do NOT plan a separate nodenormalizer step.
+  2. get_edge_summary → scout available predicates (next iteration)
+  3. get_edges → retrieve actual edges (only after scouting)
+Emit only step 1 now. The exploration planner will handle steps 2–3.
 
 Question: {input}
 CRITICAL: Output ONLY valid JSON. One action only.
@@ -156,16 +178,18 @@ Answer Contract:
 {contract}
 
 Tasks:
-1. Extract (Subject, Predicate, Object) CURIEs.
-2. Categorize Type:
+1. Extract (Subject, Predicate, Object) CURIEs for EACH edge in the raw evidence.
+2. Categorize Type for each edge:
    - direct: Specifically addresses the contract goal (e.g., Drug treats Disease).
    - mechanistic: Explains a part of the link (e.g., Drug targets Gene).
    - associative: Only shows connection without mechanism.
-3. Assign Strength (1-5):
-   - 5: Gold standard, direct link.
+3. Assign Strength (1-5) for each edge:
+   - 5: Gold standard, direct curated link.
    - 3: Reliable mechanistic link.
    - 1: Weak or questionable association.
 
+Return ALL relevant edges, not just one.
+Output a JSON object with a single key "items" whose value is an array of evidence objects.
 CRITICAL: Output ONLY valid JSON.
 {format_instructions}
 """
@@ -251,6 +275,20 @@ Interpreted Evidence:
 Original Question:
 {input}
 
+Consecutive Failed Steps (steps with no successful tool output): {consecutive_failures}
+- If this number is >= 3, you MUST choose control_decision "stop" or "synthesize".
+  The team is stuck. Continuing to explore will not improve the situation.
+- If >= 3 and we have any interpreted evidence at all, prefer "synthesize".
+- If >= 3 and we have zero interpreted evidence, use "stop".
+
+Breadth Check:
+- Unique entities found so far matching required predicates: {unique_entities}
+- Contract requires at least: {min_unique_entities}
+- If unique_entities < min_unique_entities, choose "explore" to find more entities,
+  UNLESS consecutive_failures >= 3 (stuck) or the question is specific to ONE entity.
+- For treatment questions: synthesize only when multiple distinct drugs/chemicals
+  have been found, not just one example. "1 of 3 required" means keep exploring.
+
 Epistemic State Evaluation:
 - insufficient: Contract not met. More exploration needed.
 - mechanistic: No direct link, but strong mechanistic explanation (Silver Tier).
@@ -265,6 +303,14 @@ Control Decisions:
 - explore: Contract not satisfied, continue searching.
 - synthesize: Contract satisfied, move to final report.
 - stop: Exhausted all reasonable paths or hit limits.
+
+PARTIAL CONTRACT RULE:
+If the interpreted evidence satisfies AT LEAST ONE required predicate with
+>= 5 provenance-backed edges between the correct entity types, you MAY choose
+"synthesize". A strong partial answer beats exhaustive exploration of a
+predicate that appears absent from the knowledge graph (e.g., returns only
+phantom 'Unknown' edges). Do not keep choosing "explore" solely because a
+secondary predicate has not been found.
 
 Provide:
 - epistemic_state
@@ -310,18 +356,41 @@ Current Epistemic Status:
 Missing Explanatory Fact:
 {missing_fact}
 
+Loop Detector Recommendation (READ THIS FIRST):
+{loop_recommendation}
+- If the recommendation says "TRY X" or names a specific tool or entity, your action MUST follow that suggestion.
+- If it says "STOP", call get_edge_summary on the most promising unexplored entity.
+- A "Continue" means no looping detected — proceed normally.
+
+DISEASE-FIRST STRATEGY (for treatment queries):
+- When the contract type is "treatment", ALWAYS prefer querying the DISEASE node first.
+- The disease node (e.g., MONDO:0005148) has direct "treats" edges from many drugs pointing
+  TO it. Querying get_edges(disease_curie, predicate=biolink:treats, category=Drug) returns
+  ALL drugs that treat it in one call — far more efficient than querying each drug separately.
+- Only fall back to drug-first queries if the disease CURIE is unknown or lookup failed.
+- Do NOT start with a known drug unless the disease CURIE is unavailable.
+
+SCOUT-FIRST PROTOCOL (MANDATORY — violations will cause research failure):
+- Before calling get_edges on ANY CURIE, you MUST first have a get_edge_summary entry for that CURIE in "Evidence Collected So Far".
+- If no get_edge_summary has been run for a CURIE you want to explore, your ONLY valid action is to call get_edge_summary on that CURIE.
+- "Scouting" is never wasted — it reveals the predicate landscape and prevents blind get_edges calls that return nothing.
+- Example: If you want to query MONDO:0005148 with get_edges, but no get_edge_summary(MONDO:0005148) appears in the evidence, your action must be get_edge_summary(MONDO:0005148) first.
+
 Rules:
 1. NEVER use Forbidden Entities or Predicates.
 2. NEVER retry Failed Paths unless Novelty Budget increased.
 3. Use exactly ONE tool call. (e.g. get_edges, get_edge_summary).
 4. Do NOT try to plan multiple steps in one string.
 5. Prefer CURIEs from the Shared Ledger.
+6. ALWAYS follow the Scout-First Protocol — get_edge_summary before get_edges.
+NOTE: Normalization after name-resolver is handled automatically by the system.
+Do NOT plan a nodenormalizer step — it is redundant and wastes your action budget.
 
 Choose the best next experimental action.
 
-CRITICAL: 
+CRITICAL:
 - Output ONLY valid JSON with 'action' and 'rationale' keys.
-- Do NOT output a tool call structure (name/arguments). 
+- Do NOT output a tool call structure (name/arguments).
 - Use the 'action' field to describe the tool call in natural language if needed, or follow the schema.
 - No conversational filler.
 
@@ -414,11 +483,10 @@ Your Tasks:
    - ADJUST `novelty_budget`:
      - If we are stuck verifying, INCREASE budget (allow wilder jumps).
      - If we are drifting, DECREASE budget (force focus).
-5. REFRAME GOAL:
-   - Update `global_goal_reframed` to reflect what we are *actually* doing now.
-6. ENFORCE CONSTRAINTS:
-   - Identify entities or predicates leading to loops or noise.
-   - Add them to `hard_constraints`.
+   - ENFORCE CONSTRAINTS:
+     - Identify SPECIFIC query patterns causing loops (e.g. "Source node X + Predicate Y").
+     - Add them to `forbidden_continuations` as `{{"source": "X", "predicate": "Y"}}`.
+     - ONLY use global `forbidden_predicates` if the predicate itself is the problem regardless of source.
 
 Output the updated Community Log and Hard Constraints.
 {format_instructions}
